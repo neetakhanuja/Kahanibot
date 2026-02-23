@@ -10,8 +10,30 @@ function normalizeYesNo(text) {
 // Simple draft generator for V1 (no AI yet)
 function makeDraft(transcript) {
   const clean = (transcript || "").trim();
-  const firstLine = clean.split("\n")[0] || "A Memory";
-  const title = firstLine.slice(0, 60);
+
+  // Split into non-empty lines
+  const lines = clean
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean);
+
+  // Words to ignore as title
+  const greetingWords = new Set([
+    "hello",
+    "hi",
+    "hey",
+    "namaste",
+    "hola",
+    "good morning",
+    "good afternoon",
+    "good evening",
+  ]);
+
+  // Find first meaningful line
+  const firstMeaningful =
+    lines.find((l) => !greetingWords.has(l.toLowerCase())) || "A Memory";
+
+  const title = firstMeaningful.slice(0, 60);
 
   const storyBody =
     `Title: ${title}\n\n` +

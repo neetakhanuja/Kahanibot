@@ -7,7 +7,7 @@ const SHEET_ID =
   process.env.GOOGLE_SHEET_ID || "1-J0cHIQvz9r13lCft15Shb7gLnBF2798DOoJ8OKC5Tc";
 
 const SESSIONS_TAB = "sessions";
-const SESSIONS_RANGE = `${SESSIONS_TAB}!A:F`;
+const SESSIONS_RANGE = `${SESSIONS_TAB}!A:G`;
 
 function isoNow() {
   return new Date().toISOString();
@@ -18,10 +18,28 @@ function isGreeting(text) {
   return ["hi", "hello", "hey", "hii", "hiii", "namaste"].includes(t);
 }
 
+function consentMessage() {
+  return (
+    "Before we begin: This bot helps you write stories. Your messages may be saved for the study. " +
+    "Reply OK to continue. Reply STOP anytime to opt out."
+  );
+}
+
+function helpMessage() {
+  return (
+    "How to use Kahanibot:\n" +
+    "1) Type your story.\n" +
+    "2) Type DONE when finished.\n" +
+    "3) Reply YES to save, NO to rewrite.\n" +
+    "4) Reply YES to publish, NO to keep private.\n" +
+    "Commands: HELP, RESET, STOP, START"
+  );
+}
+
 async function loadSession(user_id) {
   const rows = await readRange({
     spreadsheetId: SHEET_ID,
-    range: `${SESSIONS_TAB}!A1:F`,
+    range: `${SESSIONS_TAB}!A1:G`,
   });
 
   if (!rows.length) return null;
@@ -33,6 +51,7 @@ async function loadSession(user_id) {
   const idxState = headers.indexOf("state");
   const idxStoryText = headers.indexOf("story_text");
   const idxStoryId = headers.indexOf("story_id");
+  const idxConsent = headers.indexOf("consent");
 
   if (idxUser === -1) return null;
 
@@ -43,6 +62,7 @@ async function loadSession(user_id) {
         state: row[idxState] || "IDLE",
         story_text: row[idxStoryText] || "",
         story_id: row[idxStoryId] || "",
+        consent: String(row[idxConsent] || "").toLowerCase() === "true",
       };
     }
   }
@@ -50,12 +70,12 @@ async function loadSession(user_id) {
   return null;
 }
 
-async function upsertSession({ user_id, state, story_text, story_id }) {
+async function upsertSession({ user_id, state, story_text, story_id, consent }) {
   const sheets = await getSheetsClient();
 
   const rows = await readRange({
     spreadsheetId: SHEET_ID,
-    range: `${SESSIONS_TAB}!A1:F`,
+    range: `${SESSIONS_TAB}!A1:G`,
   });
 
   if (!rows.length) {
@@ -84,21 +104,23 @@ async function upsertSession({ user_id, state, story_text, story_id }) {
   const created_at = isoNow();
   const updated_at = isoNow();
 
+  const consentVal = consent ? "true" : "false";
+
   if (foundSheetRowNumber) {
-    // Update: state, story_text, story_id (B-D)
+    // Update B-E: state, story_text, story_id, consent
     await sheets.spreadsheets.values.update({
       spreadsheetId: SHEET_ID,
-      range: `${SESSIONS_TAB}!B${foundSheetRowNumber}:D${foundSheetRowNumber}`,
+      range: `${SESSIONS_TAB}!B${foundSheetRowNumber}:E${foundSheetRowNumber}`,
       valueInputOption: "USER_ENTERED",
       requestBody: {
-        values: [[state, story_text, story_id]],
+        values: [[state, story_text, story_id, consentVal]],
       },
     });
 
-    // Update only updated_at (F)
+    // Update updated_at (G)
     await sheets.spreadsheets.values.update({
       spreadsheetId: SHEET_ID,
-      range: `${SESSIONS_TAB}!F${foundSheetRowNumber}`,
+      range: `${SESSIONS_TAB}!G${foundSheetRowNumber}`,
       valueInputOption: "USER_ENTERED",
       requestBody: {
         values: [[updated_at]],
@@ -114,38 +136,103 @@ async function upsertSession({ user_id, state, story_text, story_id }) {
     range: SESSIONS_RANGE,
     valueInputOption: "USER_ENTERED",
     requestBody: {
-      values: [[user_id, state, story_text, story_id, created_at, updated_at]],
+      values: [[user_id, state, story_text, story_id, consentVal, created_at, updated_at]],
     },
   });
 }
 
-async function resetSession(user_id) {
+async function resetSession(user_id, consent) {
   await upsertSession({
     user_id,
     state: "IDLE",
     story_text: "",
     story_id: "",
+    consent: !!consent,
   });
 }
 
 export async function handleMessage({ from, text }) {
   const user_id = String(from || "").trim();
   const msg = String(text || "").trim();
+  const lower = msg.toLowerCase();
 
   if (!user_id) return "Missing sender id.";
 
   let session = await loadSession(user_id);
   if (!session) {
-    session = { state: "IDLE", story_text: "", story_id: "" };
+    // New user: require consent first
+    session = { state: "CONSENT", story_text: "", story_id: "", consent: false };
     await upsertSession({ user_id, ...session });
+    await logEvent({ user_id, event: "consent_shown", details: "" });
+    return consentMessage();
   }
 
   const yn = normalizeYesNo(msg); // YES / NO / UNKNOWN
-  const lower = msg.toLowerCase();
 
-  // Commands
+  // HELP always works (even if stopped)
+  if (lower === "help") {
+    await logEvent({ user_id, event: "help_shown", details: "" });
+    return helpMessage();
+  }
+
+  // STOP / START
+  if (lower === "stop") {
+    await upsertSession({
+      user_id,
+      state: "STOPPED",
+      story_text: "",
+      story_id: "",
+      consent: session.consent,
+    });
+    await logEvent({ user_id, event: "stopped", details: "" });
+    return "You have opted out. Send START anytime to resume.";
+  }
+
+  if (lower === "start") {
+    // Re-enable user
+    // If they never consented, go to consent flow again
+    if (!session.consent) {
+      await upsertSession({
+        user_id,
+        state: "CONSENT",
+        story_text: "",
+        story_id: "",
+        consent: false,
+      });
+      await logEvent({ user_id, event: "consent_shown", details: "" });
+      return consentMessage();
+    }
+
+    await resetSession(user_id, true);
+    await logEvent({ user_id, event: "started", details: "" });
+    return "Welcome back. Please type your story. When finished, type DONE.";
+  }
+
+  // If STOPPED, ignore everything except HELP/START (already handled above)
+  if (session.state === "STOPPED") {
+    return "";
+  }
+
+  // Consent flow
+  if (!session.consent || session.state === "CONSENT") {
+    if (lower === "ok" || yn === "YES") {
+      await upsertSession({
+        user_id,
+        state: "IDLE",
+        story_text: "",
+        story_id: "",
+        consent: true,
+      });
+      await logEvent({ user_id, event: "consent_accepted", details: "" });
+      return "Thank you. Please type your story. When finished, type DONE.";
+    }
+
+    return consentMessage();
+  }
+
+  // RESET (after consent only)
   if (lower === "reset") {
-    await resetSession(user_id);
+    await resetSession(user_id, true);
     await logEvent({ user_id, event: "reset", details: "" });
     return "Reset done. Please type your story. When finished, type DONE.";
   }
@@ -157,6 +244,7 @@ export async function handleMessage({ from, text }) {
       state: "COLLECTING",
       story_text: "",
       story_id: "",
+      consent: true,
     });
 
     if (isGreeting(msg) || msg === "") {
@@ -168,6 +256,7 @@ export async function handleMessage({ from, text }) {
       state: "COLLECTING",
       story_text: msg,
       story_id: "",
+      consent: true,
     });
 
     return "Added. Continue writing or type DONE.";
@@ -179,8 +268,7 @@ export async function handleMessage({ from, text }) {
       return "Please type your story. When finished, type DONE.";
     }
 
-    // ✅ Prevent accidental YES/NO being appended into story text
-    // (This happens if the user replies YES/NO but the state update is slightly delayed.)
+    // Prevent accidental YES/NO being appended into story text
     if (yn !== "UNKNOWN" && session.story_text && session.story_text.trim()) {
       return "Please continue your story or type DONE when finished.";
     }
@@ -197,6 +285,7 @@ export async function handleMessage({ from, text }) {
         state: "REVIEW",
         story_text: session.story_text,
         story_id: "",
+        consent: true,
       });
 
       await logEvent({ user_id, event: "draft_shown", details: "" });
@@ -218,6 +307,7 @@ export async function handleMessage({ from, text }) {
       state: "COLLECTING",
       story_text: updatedText,
       story_id: "",
+      consent: true,
     });
 
     return "Added. Continue writing or type DONE.";
@@ -239,6 +329,7 @@ export async function handleMessage({ from, text }) {
         state: "ASK_PUBLISH",
         story_text: session.story_text,
         story_id: saved.id,
+        consent: true,
       });
 
       return "Saved. Publish publicly? Reply YES to publish or NO to keep it private.";
@@ -250,6 +341,7 @@ export async function handleMessage({ from, text }) {
         state: "COLLECTING",
         story_text: "",
         story_id: "",
+        consent: true,
       });
 
       return "Okay, let’s rewrite. Please type your story again. When finished, type DONE.";
@@ -271,7 +363,7 @@ export async function handleMessage({ from, text }) {
         details: session.story_id || "",
       });
 
-      await resetSession(user_id);
+      await resetSession(user_id, true);
       return `Published. View your stories here: /u/${user_id}`;
     }
 
@@ -282,7 +374,7 @@ export async function handleMessage({ from, text }) {
         details: session.story_id || "",
       });
 
-      await resetSession(user_id);
+      await resetSession(user_id, true);
       return "Okay. Kept private. You can start a new story anytime.";
     }
 
@@ -290,6 +382,6 @@ export async function handleMessage({ from, text }) {
   }
 
   // Fallback
-  await resetSession(user_id);
+  await resetSession(user_id, true);
   return "Something went wrong. Resetting. Please type your story. When finished, type DONE.";
 }

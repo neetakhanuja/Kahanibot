@@ -35,12 +35,10 @@ function makeDraft(transcript) {
 
   const title = firstMeaningful.slice(0, 60);
 
-  const storyBody =
-    `Title: ${title}\n\n` +
-    `Story:\n${clean}\n\n` +
-    `Share this on your public page? YES/NO`;
+  // ✅ conversation.js expects draft.body
+  const body = clean;
 
-  return { title, storyBody };
+  return { title, body };
 }
 
 export { normalizeYesNo, makeDraft };

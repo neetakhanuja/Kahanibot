@@ -15,12 +15,46 @@ function escapeHtml(s) {
     .replaceAll("'", "&#039;");
 }
 
+function formatDate(iso) {
+  try {
+    const d = new Date(iso);
+    return d.toLocaleString();
+  } catch {
+    return iso || "";
+  }
+}
+
+// HOME (optional simple instructions)
+app.get("/", (req, res) => {
+  const html = `
+    <!doctype html>
+    <html>
+      <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>Kahanibot</title>
+      </head>
+      <body style="font-family: system-ui, Arial; max-width: 780px; margin: 40px auto; padding: 0 16px; color:#111;">
+        <h1 style="margin:0 0 8px 0;">Kahanibot</h1>
+        <p style="margin:0 0 16px 0; color:#444;">
+          Public stories are available at <code>/u/&lt;userId&gt;</code>
+        </p>
+        <p style="margin:0; color:#444;">
+          Example: <code>/u/test-user</code>
+        </p>
+      </body>
+    </html>
+  `;
+  res.setHeader("Content-Type", "text/html; charset=utf-8");
+  res.status(200).send(html);
+});
+
 // HEALTH CHECK
 app.get("/health", (req, res) => {
   res.status(200).send("OK");
 });
 
-// PUBLIC STORY PAGE
+// PUBLIC STORY PAGE (nicer layout)
 app.get("/u/:userId", async (req, res) => {
   try {
     const userId = req.params.userId;
@@ -31,18 +65,38 @@ app.get("/u/:userId", async (req, res) => {
     });
 
     if (!stories.length) {
-      return res.status(404).send("No public stories found for this user.");
+      return res
+        .status(404)
+        .send("No public stories found for this user.");
     }
 
-    const itemsHtml = stories
+    // Newest first
+    const sorted = [...stories].sort((a, b) => {
+      const ta = new Date(a.created_at || 0).getTime();
+      const tb = new Date(b.created_at || 0).getTime();
+      return tb - ta;
+    });
+
+    const itemsHtml = sorted
       .map((s) => {
-        const date = escapeHtml(s.created_at);
+        const date = escapeHtml(formatDate(s.created_at));
         const text = escapeHtml(s.story_text).replaceAll("\n", "<br/>");
 
         return `
-          <article style="padding:16px 0; border-bottom:1px solid #eee;">
-            <div style="color:#666; font-size:14px;">${date}</div>
-            <div style="margin-top:8px; line-height:1.6;">${text}</div>
+          <article style="
+            background: #fff;
+            border: 1px solid #e6e6e6;
+            border-radius: 12px;
+            padding: 16px;
+            margin: 16px 0;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+          ">
+            <div style="color:#666; font-size:13px; margin-bottom:10px;">
+              ${date}
+            </div>
+            <div style="font-size:16px; line-height:1.7; color:#111;">
+              ${text}
+            </div>
           </article>
         `;
       })
@@ -54,11 +108,16 @@ app.get("/u/:userId", async (req, res) => {
         <head>
           <meta charset="utf-8" />
           <meta name="viewport" content="width=device-width, initial-scale=1" />
-          <title>Kahanibot Stories</title>
+          <title>Stories by ${escapeHtml(userId)}</title>
         </head>
-        <body style="font-family: system-ui, Arial; max-width: 720px; margin: 40px auto; padding: 0 16px;">
-          <h1>Stories by ${escapeHtml(userId)}</h1>
-          ${itemsHtml}
+        <body style="font-family: system-ui, Arial; background:#fafafa; color:#111;">
+          <div style="max-width: 780px; margin: 40px auto; padding: 0 16px;">
+            <h1 style="margin:0 0 8px 0;">Stories by ${escapeHtml(userId)}</h1>
+            <div style="color:#444; margin-bottom: 20px;">
+              Showing public stories only.
+            </div>
+            ${itemsHtml}
+          </div>
         </body>
       </html>
     `;
@@ -86,7 +145,7 @@ app.get("/webhook", (req, res) => {
   return res.sendStatus(403);
 });
 
-// INCOMING WEBHOOK EVENTS
+// INCOMING WEBHOOK EVENTS (still logs only for now)
 app.post("/webhook", (req, res) => {
   console.log("==== INCOMING WEBHOOK ====");
   console.log(JSON.stringify(req.body, null, 2));

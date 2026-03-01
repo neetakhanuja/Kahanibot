@@ -1,9 +1,12 @@
 import "dotenv/config";
 import express from "express";
-import { handleMessage } from "./src/conversation.js";
+import path from "path";
+import * as convo from "./src/conversation.js";
 import { getStoriesByUser } from "./src/storyStore.js";
 
 const app = express();
+
+app.use(express.static("public"));
 app.use(express.json());
 
 function escapeHtml(s) {
@@ -24,37 +27,41 @@ function formatDate(iso) {
   }
 }
 
-// HOME (optional simple instructions)
-app.get("/", (req, res) => {
-  const html = `
-    <!doctype html>
-    <html>
-      <head>
-        <meta charset="utf-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <title>Kahanibot</title>
-      </head>
-      <body style="font-family: system-ui, Arial; max-width: 780px; margin: 40px auto; padding: 0 16px; color:#111;">
-        <h1 style="margin:0 0 8px 0;">Kahanibot</h1>
-        <p style="margin:0 0 16px 0; color:#444;">
-          Public stories are available at <code>/u/&lt;userId&gt;</code>
-        </p>
-        <p style="margin:0; color:#444;">
-          Example: <code>/u/test-user</code>
-        </p>
-      </body>
-    </html>
-  `;
-  res.setHeader("Content-Type", "text/html; charset=utf-8");
-  res.status(200).send(html);
+// Health
+app.get("/health", (req, res) => res.status(200).send("OK"));
+
+// App UI (later we will replace index.html with DST UI)
+app.get("/app", (req, res) => {
+  res.sendFile(path.resolve("public", "index.html"));
 });
 
-// HEALTH CHECK
-app.get("/health", (req, res) => {
-  res.status(200).send("OK");
+// ✅ DST Builder API endpoint
+app.post("/api/turn", async (req, res) => {
+  try {
+    const { user_id, text, lang } = req.body || {};
+    if (!user_id) return res.status(400).json({ error: "Missing user_id" });
+
+    if (typeof convo.handleAppTurn !== "function") {
+      return res.status(500).json({
+        error:
+          "handleAppTurn is missing. Ensure src/conversation.js exports handleAppTurn.",
+      });
+    }
+
+    const out = await convo.handleAppTurn({
+      user_id: String(user_id),
+      text: String(text || ""),
+      lang: lang ? String(lang) : undefined,
+    });
+
+    return res.json(out);
+  } catch (err) {
+    console.error("Error in /api/turn:", err);
+    return res.status(500).json({ error: "Server error" });
+  }
 });
 
-// PUBLIC STORY PAGE (nicer layout)
+// Public stories page
 app.get("/u/:userId", async (req, res) => {
   try {
     const userId = req.params.userId;
@@ -65,12 +72,9 @@ app.get("/u/:userId", async (req, res) => {
     });
 
     if (!stories.length) {
-      return res
-        .status(404)
-        .send("No public stories found for this user.");
+      return res.status(404).send("No public stories found for this user.");
     }
 
-    // Newest first
     const sorted = [...stories].sort((a, b) => {
       const ta = new Date(a.created_at || 0).getTime();
       const tb = new Date(b.created_at || 0).getTime();
@@ -84,11 +88,11 @@ app.get("/u/:userId", async (req, res) => {
 
         return `
           <article style="
-            background: #fff;
-            border: 1px solid #e6e6e6;
-            border-radius: 12px;
-            padding: 16px;
-            margin: 16px 0;
+            background:#fff;
+            border:1px solid #e6e6e6;
+            border-radius:12px;
+            padding:16px;
+            margin:16px 0;
             box-shadow: 0 1px 2px rgba(0,0,0,0.04);
           ">
             <div style="color:#666; font-size:13px; margin-bottom:10px;">
@@ -130,7 +134,7 @@ app.get("/u/:userId", async (req, res) => {
   }
 });
 
-// WEBHOOK VERIFICATION
+// Webhook verification (keep)
 app.get("/webhook", (req, res) => {
   const mode = req.query["hub.mode"];
   const token = req.query["hub.verify_token"];
@@ -145,7 +149,6 @@ app.get("/webhook", (req, res) => {
   return res.sendStatus(403);
 });
 
-// INCOMING WEBHOOK EVENTS (still logs only for now)
 app.post("/webhook", (req, res) => {
   console.log("==== INCOMING WEBHOOK ====");
   console.log(JSON.stringify(req.body, null, 2));
@@ -153,19 +156,26 @@ app.post("/webhook", (req, res) => {
   res.sendStatus(200);
 });
 
-// LOCAL SIMULATION ROUTE
+// Debug simulate route (keep)
 app.post("/simulate", async (req, res) => {
-  const { from, text } = req.body;
+  try {
+    const { from, text } = req.body || {};
+    if (!from) return res.status(400).json({ error: "Missing from" });
 
-  const reply = await handleMessage({ from, text });
+    if (typeof convo.handleMessage !== "function") {
+      return res.status(500).json({
+        error:
+          "handleMessage is missing. Ensure src/conversation.js exports handleMessage.",
+      });
+    }
 
-  res.json({
-    to: from,
-    reply,
-  });
+    const reply = await convo.handleMessage({ from, text });
+    return res.json({ to: from, reply });
+  } catch (err) {
+    console.error("Error in /simulate:", err);
+    return res.status(500).json({ error: "Server error" });
+  }
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));

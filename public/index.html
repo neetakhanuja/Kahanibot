@@ -1,0 +1,682 @@
+<!DOCTYPE html>
+<html lang="gu">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Kahani — Story Builder</title>
+
+  <style>
+    :root{
+      --bg:#f7f5f2;
+      --card:#ffffff;
+      --border:#e6e2dc;
+      --text:#1f1f1f;
+      --muted:#6b6b6b;
+      --accent:#2f6f4e;
+      --mic:#6b4eff;
+      --micOn:#d43b3b;
+    }
+    *{ box-sizing:border-box; }
+    body{
+      margin:0;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+      background:var(--bg);
+      color:var(--text);
+      height:100vh;
+      overflow:hidden;
+    }
+    .wrap{
+      max-width:780px;
+      margin:0 auto;
+      height:100vh;
+      display:flex;
+      flex-direction:column;
+    }
+    header{
+      padding:14px 14px 6px;
+      text-align:center;
+      font-size:22px;
+      font-weight:750;
+    }
+    .sub{
+      text-align:center;
+      font-size:15px;
+      color:var(--muted);
+      margin:0 14px 10px;
+    }
+    .card{
+      background:var(--card);
+      border:1px solid var(--border);
+      border-radius:16px;
+      padding:14px;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+    }
+    .main{
+      flex:1;
+      padding:0 12px 10px;
+      overflow:hidden;
+      display:flex;
+      flex-direction:column;
+      gap:12px;
+    }
+
+    .screen{ display:none; flex:1; overflow:hidden; }
+    .screen.active{ display:flex; flex-direction:column; gap:12px; }
+
+    .formRow{ display:flex; gap:10px; }
+    input, select{
+      width:100%;
+      font-size:18px;
+      padding:12px 12px;
+      border:1px solid #d6d2cc;
+      border-radius:12px;
+      outline:none;
+      background:#fff;
+    }
+    button{
+      font-size:17px;
+      padding:12px 14px;
+      border-radius:12px;
+      border:none;
+      cursor:pointer;
+      white-space:nowrap;
+    }
+    .primary{
+      background:var(--accent);
+      color:#fff;
+      width:100%;
+      font-size:18px;
+      padding:14px 14px;
+      border-radius:14px;
+    }
+    .secondary{
+      background:#f1efe9;
+      border:1px solid var(--border);
+      color:#333;
+    }
+
+    .twoCards{
+      display:flex;
+      flex-direction:column;
+      gap:12px;
+      overflow:hidden;
+      flex:1;
+    }
+    .label{
+      font-size:13px;
+      color:var(--muted);
+      margin-bottom:8px;
+    }
+
+    #storyBox{
+      flex:1;
+      overflow:auto;
+      min-height:180px;
+      font-size:19px;
+      line-height:1.75;
+      white-space:pre-wrap;
+    }
+
+    #promptBox{
+      font-size:18px;
+      line-height:1.6;
+      white-space:pre-wrap;
+    }
+
+    .bottomBar{
+      position:sticky;
+      bottom:0;
+      padding:10px 12px 14px;
+      background:transparent;
+    }
+    .bottomInner{
+      background:var(--card);
+      border:1px solid var(--border);
+      border-radius:16px;
+      padding:12px;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+      display:flex;
+      flex-direction:column;
+      gap:10px;
+    }
+    .toolsRow{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:12px;
+    }
+    .micZone{
+      flex:1;
+      display:flex;
+      flex-direction:column;
+      align-items:center;
+      gap:8px;
+    }
+    .micBtn{
+      width:82px;
+      height:82px;
+      border-radius:999px;
+      background:var(--mic);
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      border:none;
+      cursor:pointer;
+      box-shadow: 0 10px 22px rgba(107,78,255,0.20);
+    }
+    .micBtn.listening{
+      background:var(--micOn);
+      box-shadow: 0 10px 22px rgba(212,59,59,0.18);
+    }
+    .micIcon{ width:34px; height:34px; fill:#fff; }
+    #micHint{
+      font-size:14px;
+      color:var(--muted);
+      text-align:center;
+      line-height:1.3;
+    }
+
+    #typeArea{ display:none; gap:10px; }
+    #typeArea.open{ display:flex; }
+    #typeInput{ flex:1; min-width:0; }
+    .sendBtn{ background:var(--accent); color:#fff; min-width:86px; }
+    .sendBtn[disabled]{ opacity:0.6; cursor:not-allowed; }
+
+    .topRow{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:10px;
+      margin:0 12px;
+    }
+    .pill{
+      font-size:13px;
+      color:#333;
+      background:#fff;
+      border:1px solid var(--border);
+      border-radius:999px;
+      padding:8px 10px;
+    }
+
+    #draftBox{
+      font-size:18px;
+      line-height:1.7;
+      white-space:pre-wrap;
+      max-height:46vh;
+      overflow:auto;
+    }
+    .btnRow{ display:flex; gap:10px; }
+    .btnRow button{ flex:1; }
+
+    .tiny{
+      font-size:13px;
+      color:var(--muted);
+      line-height:1.4;
+      margin-top:10px;
+    }
+
+    @media (max-width:420px){
+      header{ font-size:21px; }
+      #storyBox{ font-size:18px; }
+      #promptBox{ font-size:17px; }
+      .micBtn{ width:78px; height:78px; }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="wrap">
+    <header>Kahani</header>
+    <div class="sub" id="subtitle">A calm place to tell your story.</div>
+
+    <div class="topRow">
+      <div class="pill" id="whoPill" style="display:none;"></div>
+      <div style="display:flex; gap:8px;">
+        <button class="secondary" id="storiesBtn" style="display:none;" onclick="openStories()">My Stories</button>
+        <button class="secondary" id="newBtn" style="display:none;" onclick="startNewStory()">New Story</button>
+      </div>
+    </div>
+
+    <div class="main">
+
+      <!-- WELCOME -->
+      <div class="screen active" id="screenWelcome">
+        <div class="card">
+          <div class="label">First name (displayed)</div>
+          <input id="firstName" placeholder="e.g., Shanta" />
+
+          <div style="height:10px;"></div>
+
+          <div class="label">Age (for ID)</div>
+          <input id="age" inputmode="numeric" placeholder="e.g., 67" />
+
+          <div style="height:10px;"></div>
+
+          <div class="label">Language</div>
+          <select id="lang">
+            <option value="gu">Gujarati</option>
+            <option value="hi">Hindi</option>
+            <option value="en">English</option>
+          </select>
+
+          <div style="height:14px;"></div>
+
+          <button class="primary" onclick="saveProfile()">Continue</button>
+
+          <div class="tiny">
+            Note: mic on phones will work reliably after HTTPS deployment. On laptop it usually works.
+          </div>
+        </div>
+      </div>
+
+      <!-- BUILDER -->
+      <div class="screen" id="screenBuilder">
+        <div class="twoCards">
+          <div class="card" style="flex:1; overflow:hidden;">
+            <div class="label">Your story so far</div>
+            <div id="storyBox"></div>
+          </div>
+
+          <div class="card">
+            <div class="label">Prompt</div>
+            <div id="promptBox">…</div>
+          </div>
+        </div>
+
+        <div class="bottomBar">
+          <div class="bottomInner">
+            <div id="typeArea">
+              <input id="typeInput" placeholder="Type (optional)" />
+              <button class="sendBtn" id="sendTypedBtn" onclick="sendTyped()">Send</button>
+            </div>
+
+            <div class="toolsRow">
+              <button class="secondary" id="typeToggle" onclick="toggleTyping()">Type</button>
+
+              <div class="micZone">
+                <button class="micBtn" id="micBtn" onclick="toggleMic()" title="Speak">
+                  <svg class="micIcon" viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-3.08A7 7 0 0 0 19 11h-2z"/>
+                  </svg>
+                </button>
+                <div id="micHint">Tap mic, speak. Then the agent will ask the next question.</div>
+              </div>
+
+              <button class="secondary" id="doneBtn" onclick="endStory()">Done</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- REVIEW -->
+      <div class="screen" id="screenReview">
+        <div class="card">
+          <div class="label">Review</div>
+          <div id="draftBox"></div>
+
+          <div style="height:12px;"></div>
+
+          <div class="btnRow">
+            <button class="primary" onclick="saveStoryYes()">Save</button>
+            <button class="secondary" onclick="reviseStory()">Change</button>
+          </div>
+
+          <div class="tiny">
+            Save writes to Google Sheets and appears in “My Stories”.
+          </div>
+        </div>
+      </div>
+
+      <!-- SUCCESS -->
+      <div class="screen" id="screenSuccess">
+        <div class="card">
+          <div style="font-size:18px; line-height:1.6;" id="successMsg">
+            Saved. Thank you for sharing.
+          </div>
+          <div style="height:12px;"></div>
+          <button class="primary" onclick="startNewStory()">Make another story</button>
+          <div style="height:10px;"></div>
+          <button class="secondary" onclick="openStories()">View My Stories</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <script>
+    function normId(s){ return String(s||"").toLowerCase().replace(/\s+/g,""); }
+
+    const state = {
+      userId: null,
+      firstName: null,
+      age: null,
+      lang: "gu",
+      busy: false
+    };
+
+    const els = {
+      subtitle: document.getElementById("subtitle"),
+      whoPill: document.getElementById("whoPill"),
+      storiesBtn: document.getElementById("storiesBtn"),
+      newBtn: document.getElementById("newBtn"),
+
+      screenWelcome: document.getElementById("screenWelcome"),
+      screenBuilder: document.getElementById("screenBuilder"),
+      screenReview: document.getElementById("screenReview"),
+      screenSuccess: document.getElementById("screenSuccess"),
+
+      firstName: document.getElementById("firstName"),
+      age: document.getElementById("age"),
+      lang: document.getElementById("lang"),
+
+      storyBox: document.getElementById("storyBox"),
+      promptBox: document.getElementById("promptBox"),
+
+      typeArea: document.getElementById("typeArea"),
+      typeToggle: document.getElementById("typeToggle"),
+      typeInput: document.getElementById("typeInput"),
+      sendTypedBtn: document.getElementById("sendTypedBtn"),
+
+      micBtn: document.getElementById("micBtn"),
+      micHint: document.getElementById("micHint"),
+
+      draftBox: document.getElementById("draftBox"),
+      successMsg: document.getElementById("successMsg"),
+      doneBtn: document.getElementById("doneBtn"),
+    };
+
+    function showScreen(id){
+      ["screenWelcome","screenBuilder","screenReview","screenSuccess"].forEach(k=>{
+        document.getElementById(k).classList.remove("active");
+      });
+      document.getElementById(id).classList.add("active");
+    }
+
+    function setBusy(on){
+      state.busy = !!on;
+      els.sendTypedBtn.disabled = state.busy;
+      els.doneBtn.disabled = state.busy;
+      els.typeToggle.disabled = state.busy;
+      els.micBtn.disabled = state.busy;
+    }
+
+    function loadProfile(){
+      const raw = localStorage.getItem("kahanibot_profile_v1");
+      if (!raw) return false;
+      try{
+        const p = JSON.parse(raw);
+        state.userId = p.userId;
+        state.firstName = p.firstName;
+        state.age = p.age;
+        state.lang = p.lang || "gu";
+        return true;
+      }catch{ return false; }
+    }
+
+    function initAfterProfile(){
+      els.whoPill.style.display = "block";
+      els.whoPill.textContent = state.firstName;
+      els.storiesBtn.style.display = "inline-block";
+      els.newBtn.style.display = "inline-block";
+      els.subtitle.textContent = "Speak freely. Your story will build on the screen.";
+      els.lang.value = state.lang;
+    }
+
+    function saveProfile(){
+      const fn = String(els.firstName.value||"").trim();
+      const age = String(els.age.value||"").trim();
+      const lang = els.lang.value;
+
+      if (!fn || !age){
+        alert("Please enter first name and age.");
+        return;
+      }
+
+      const userId = normId(fn) + age; // e.g., shanta67
+
+      state.userId = userId;
+      state.firstName = fn;
+      state.age = age;
+      state.lang = lang;
+
+      localStorage.setItem("kahanibot_profile_v1", JSON.stringify({
+        userId, firstName: fn, age, lang
+      }));
+
+      initAfterProfile();
+      startNewStory();
+    }
+
+    function openStories(){
+      if (!state.userId) return;
+      window.open(`/u/${encodeURIComponent(state.userId)}`, "_blank");
+    }
+
+    function setStorySoFar(storyText){
+      const t = String(storyText || "");
+      els.storyBox.textContent = t;
+      els.storyBox.scrollTop = els.storyBox.scrollHeight;
+    }
+
+    function langToSpeechLocale(lang){
+      if (lang === "hi") return "hi-IN";
+      if (lang === "gu") return "gu-IN";
+      return "en-US";
+    }
+
+    async function apiTurn(text){
+      const res = await fetch("/api/turn", {
+        method:"POST",
+        headers:{ "Content-Type":"application/json" },
+        body: JSON.stringify({
+          user_id: state.userId,
+          text: String(text || ""),
+          lang: state.lang
+        })
+      });
+      const data = await res.json();
+      if (!data || data.error) throw new Error(data?.error || "Server error");
+      return data;
+    }
+
+    function renderFromServer(data){
+      if (data.story_so_far !== undefined) {
+        setStorySoFar(data.story_so_far);
+      }
+
+      if (data.screen === "BUILD") {
+        els.promptBox.textContent = data.agent_prompt || "";
+        showScreen("screenBuilder");
+        return;
+      }
+
+      if (data.screen === "REVIEW") {
+        const title = data.draft?.title ? data.draft.title : "";
+        const body  = data.draft?.body  ? data.draft.body  : "";
+        els.draftBox.textContent = (title ? title + "\n\n" : "") + body;
+        els.promptBox.textContent = data.agent_prompt || "";
+        showScreen("screenReview");
+        return;
+      }
+
+      if (data.screen === "SUCCESS") {
+        els.successMsg.textContent = data.agent_prompt || "Saved. Thank you for sharing.";
+        showScreen("screenSuccess");
+        return;
+      }
+
+      // fallback
+      els.promptBox.textContent = data.agent_prompt || "";
+      showScreen("screenBuilder");
+    }
+
+    async function syncOnLoad(){
+      // Pull current session state (re-entry support)
+      try{
+        setBusy(true);
+        const data = await apiTurn("");
+        renderFromServer(data);
+      } catch(e){
+        els.promptBox.textContent = "Could not connect to server.";
+        showScreen("screenBuilder");
+      } finally {
+        setBusy(false);
+      }
+    }
+
+    async function sendChunk(userText){
+      const t = String(userText||"").trim();
+      if (!t) return;
+
+      try{
+        setBusy(true);
+        const data = await apiTurn(t);
+        renderFromServer(data);
+      } catch(e){
+        els.promptBox.textContent = "Server error. Please try again.";
+      } finally {
+        setBusy(false);
+      }
+    }
+
+    async function startNewStory(){
+      // If a story is already in progress, this UI-only "New Story" may confuse backend.
+      // We do a simple safe reset: if there is text, we force a review then NO (discard).
+      const current = (els.storyBox.textContent || "").trim();
+
+      showScreen("screenBuilder");
+      els.promptBox.textContent = "...";
+      setStorySoFar("");
+
+      try{
+        setBusy(true);
+
+        if (current.length > 0) {
+          // Create draft (DONE), then discard (NO) to reset session
+          await apiTurn("DONE");
+          await apiTurn("NO");
+        }
+
+        const data = await apiTurn("");
+        renderFromServer(data);
+      } catch(e){
+        els.promptBox.textContent = "Could not start a new story.";
+      } finally {
+        setBusy(false);
+      }
+    }
+
+    async function endStory(){
+      await sendChunk("DONE");
+    }
+
+    async function saveStoryYes(){
+      await sendChunk("YES");
+    }
+
+    async function reviseStory(){
+      await sendChunk("NO");
+    }
+
+    // Typing UI
+    function toggleTyping(){
+      const open = els.typeArea.classList.toggle("open");
+      els.typeToggle.textContent = open ? "Hide" : "Type";
+      if (open) setTimeout(()=>els.typeInput.focus(), 50);
+    }
+
+    async function sendTyped(){
+      const t = els.typeInput.value.trim();
+      if (!t) return;
+      els.typeInput.value = "";
+      await sendChunk(t);
+    }
+
+    els.typeInput.addEventListener("keydown", (e)=>{
+      if (e.key === "Enter"){
+        e.preventDefault();
+        sendTyped();
+      }
+    });
+
+    // Speech to text
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    let recognition = null;
+    let listening = false;
+
+    if (SpeechRecognition){
+      recognition = new SpeechRecognition();
+      recognition.interimResults = false;
+      recognition.continuous = true;
+      recognition.maxAlternatives = 1;
+
+      recognition.onstart = ()=>{
+        listening = true;
+        els.micBtn.classList.add("listening");
+        els.micHint.textContent = "Listening… tap again to stop";
+      };
+      recognition.onend = ()=>{
+        listening = false;
+        els.micBtn.classList.remove("listening");
+        els.micHint.textContent = "Captured. You can speak again, or tap Done when finished.";
+      };
+      recognition.onerror = ()=>{
+        els.promptBox.textContent = "Mic permission blocked here. It will work reliably after HTTPS deployment.";
+      };
+      recognition.onresult = async (event) => {
+  let fullText = "";
+
+  for (let i = event.resultIndex; i < event.results.length; i++) {
+    fullText += event.results[i][0].transcript + " ";
+  }
+
+  const chunk = fullText.trim();
+  if (!chunk) return;
+
+  // If user says DONE by voice, finish story
+  if (chunk.toLowerCase() === "done") {
+    recognition.stop();
+    await sendChunk("DONE");
+    return;
+  }
+
+  await sendChunk(chunk);
+};
+    } else {
+      els.micHint.textContent = "Mic not supported in this browser.";
+    }
+
+    function toggleMic(){
+      if (!recognition) return;
+      if (state.busy) return;
+
+      if (listening){
+        recognition.stop();
+        return;
+      }
+      recognition.lang = langToSpeechLocale(state.lang);
+      try{ recognition.start(); } catch(e){}
+    }
+
+    // Init
+    if (loadProfile()){
+      initAfterProfile();
+      showScreen("screenBuilder");
+      syncOnLoad();
+    } else {
+      showScreen("screenWelcome");
+    }
+
+    // Expose to buttons
+    window.saveProfile = saveProfile;
+    window.openStories = openStories;
+    window.startNewStory = startNewStory;
+    window.toggleTyping = toggleTyping;
+    window.sendTyped = sendTyped;
+    window.toggleMic = toggleMic;
+    window.endStory = endStory;
+    window.saveStoryYes = saveStoryYes;
+    window.reviseStory = reviseStory;
+  </script>
+</body>
+</html>

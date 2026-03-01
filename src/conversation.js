@@ -1,68 +1,163 @@
+// src/conversation.js
 import { getSheetsClient, readRange } from "./sheets.js";
-import { saveStory, updatePublishStatus } from "./storyStore.js";
+import { saveStory } from "./storyStore.js";
 import { makeDraft, normalizeYesNo } from "./storyEngine.js";
 import { logEvent } from "./logger.js";
+import { generateReflectionAndQuestion } from "./ai.js";
 
-const SHEET_ID =
-  process.env.GOOGLE_SHEET_ID || "1-J0cHIQvz9r13lCft15Shb7gLnBF2798DOoJ8OKC5Tc";
-
+const SHEET_ID = process.env.GOOGLE_SHEET_ID;
 const SESSIONS_TAB = "sessions";
-const SESSIONS_RANGE = `${SESSIONS_TAB}!A:G`;
 
+console.log("[BOOT] conversation.js loaded");
+
+// --------------------
+// Helpers
+// --------------------
 function isoNow() {
   return new Date().toISOString();
 }
 
-function isGreeting(text) {
-  const t = String(text || "").trim().toLowerCase();
-  return ["hi", "hello", "hey", "hii", "hiii", "namaste"].includes(t);
+function normalizeLangChoice(msg) {
+  const t = String(msg || "").trim().toLowerCase();
+  if (t === "1" || t === "hindi" || t === "hi" || t === "हिंदी") return "hi";
+  if (t === "2" || t === "gujarati" || t === "gu" || t === "ગુજરાતી") return "gu";
+  if (t === "3" || t === "english" || t === "en") return "en";
+  return null;
 }
 
-function consentMessage() {
-  return (
-    "Before we begin: This bot helps you write stories. Your messages may be saved for the study. " +
-    "Reply OK to continue. Reply STOP anytime to opt out."
-  );
+function getText(lang, key, vars = {}) {
+  const L = lang || "en";
+
+  const strings = {
+    en: {
+      consent:
+        "Before we begin: This helps shape personal stories. Your messages may be saved for the study. Reply OK to continue. Reply STOP anytime.",
+      chooseLang:
+        "Choose your language (reply with 1/2/3):\n1) Hindi\n2) Gujarati\n3) English",
+
+      startCollecting:
+        "Okay. Please share your memory. Speak or type freely. When you are finished, type DONE.",
+      added: "Thank you. Go on. (Type DONE when finished.)",
+
+      draftIntro: "Here is your draft:",
+      saveAsk: "Save this story? Reply YES to save or NO to rewrite.",
+      rewrite: "Okay. Please share your story again. Type DONE when finished.",
+
+      published: `Saved. View your stories here: /u/${vars.user_id || ""}`,
+
+      stopped: "You have opted out. Send START anytime to resume.",
+      resetDone: "Reset done.",
+      help:
+        "Commands: HELP, RESET, STOP, START\n\nHow it works:\n• Share your story\n• Type DONE\n• Save YES or rewrite NO",
+      langSet: "Okay. I will continue in your chosen language.",
+    },
+
+    hi: {
+      consent:
+        "शुरू करने से पहले: यह आपकी कहानियों को गढ़ने में मदद करता है। अध्ययन के लिए संदेश सेव हो सकते हैं। आगे बढ़ने के लिए OK लिखें। कभी भी STOP लिख सकते हैं।",
+      chooseLang: "भाषा चुनें (1/2/3):\n1) हिंदी\n2) गुजराती\n3) English",
+
+      startCollecting:
+        "ठीक है। अपनी याद साझा करें। आराम से बोलें या लिखें। जब पूरा हो जाए, DONE लिखें।",
+      added: "धन्यवाद। आगे बताइए। (पूरा होने पर DONE लिखें।)",
+
+      draftIntro: "यह आपका ड्राफ्ट है:",
+      saveAsk: "क्या इसे सेव करें? सेव के लिए YES, दोबारा लिखने के लिए NO।",
+      rewrite: "ठीक है। कृपया कहानी फिर से साझा करें। पूरा होने पर DONE लिखें।",
+
+      published: `सेव हो गया। यहाँ देखें: /u/${vars.user_id || ""}`,
+
+      stopped: "आपने ऑप्ट आउट कर लिया है। फिर शुरू करने के लिए START लिखें।",
+      resetDone: "रीसेट हो गया।",
+      help:
+        "Commands: HELP, RESET, STOP, START\n\nFlow:\n• कहानी साझा करें\n• DONE लिखें\n• सेव के लिए YES या बदलने के लिए NO",
+      langSet: "ठीक है। अब मैं आपकी चुनी हुई भाषा में आगे बढ़ूँगा/बढ़ूँगी।",
+    },
+
+    gu: {
+      consent:
+        "શરુ કરવા પહેલા: આ બોટ વાર્તા ગોઠવવામાં મદદ કરે છે. અભ્યાસ માટે તમારા સંદેશાઓ સેવ થઈ શકે છે. આગળ વધવા OK લખો. ક્યારે પણ STOP લખી શકો છો.",
+      chooseLang: "ભાષા પસંદ કરો (1/2/3):\n1) Hindi\n2) ગુજરાતી\n3) English",
+
+      startCollecting:
+        "બરાબર. તમારી યાદ શેર કરો. આરામથી બોલો અથવા લખો. પૂરું થાય ત્યારે DONE લખો.",
+      added: "આભાર. આગળ કહો. (પૂરું થાય ત્યારે DONE લખો.)",
+
+      draftIntro: "આ તમારો ડ્રાફ્ટ છે:",
+      saveAsk: "આ વાર્તા સેવ કરવી? સેવ માટે YES, ફરી લખવા NO.",
+      rewrite: "બરાબર. કૃપા કરીને વાર્તા ફરીથી શેર કરો. પૂરું થાય ત્યારે DONE લખો.",
+
+      published: `સેવ થઈ ગયું. અહીં જુઓ: /u/${vars.user_id || ""}`,
+
+      stopped: "તમે ઑપ્ટ આઉટ કર્યું છે. ફરી શરૂ કરવા START લખો.",
+      resetDone: "રીસેટ થઈ ગયું.",
+      help:
+        "Commands: HELP, RESET, STOP, START\n\nFlow:\n• વાર્તા શેર કરો\n• DONE લખો\n• સેવ માટે YES અથવા બદલવા NO",
+      langSet: "બરાબર. હવે હું તમારી પસંદ કરેલી ભાષામાં આગળ વધું છું.",
+    },
+  };
+
+  const pack = strings[L] || strings.en;
+  return pack[key] || strings.en[key] || "";
 }
 
-function helpMessage() {
-  return (
-    "How to use Kahanibot:\n" +
-    "1) Type your story.\n" +
-    "2) Type DONE when finished.\n" +
-    "3) Reply YES to save, NO to rewrite.\n" +
-    "4) Reply YES to publish, NO to keep private.\n" +
-    "Commands: HELP, RESET, STOP, START"
-  );
+function headerIndex(headers, name) {
+  return headers.findIndex((h) => String(h || "").trim() === name);
+}
+
+function normalizeHeaderRow(row) {
+  return (row || []).map((h) => String(h || "").trim());
+}
+
+function isDone(msg) {
+  return String(msg || "").trim().toUpperCase() === "DONE";
+}
+
+// --------------------
+// Sessions
+// --------------------
+async function getSessionsTable() {
+  if (!SHEET_ID) {
+    throw new Error(
+      "GOOGLE_SHEET_ID is missing in environment. Set it in .env or Render."
+    );
+  }
+
+  const rows = await readRange({
+    spreadsheetId: SHEET_ID,
+    range: `${SESSIONS_TAB}!A1:Z`,
+  });
+  if (!rows.length) return { headers: [], data: [] };
+
+  const headers = normalizeHeaderRow(rows[0]);
+  const data = rows.slice(1);
+  return { headers, data };
 }
 
 async function loadSession(user_id) {
-  const rows = await readRange({
-    spreadsheetId: SHEET_ID,
-    range: `${SESSIONS_TAB}!A1:G`,
-  });
+  const { headers, data } = await getSessionsTable();
+  if (!headers.length) return null;
 
-  if (!rows.length) return null;
+  const idxUser = headerIndex(headers, "user_id");
+  if (idxUser < 0) return null;
 
-  const headers = rows[0];
-  const data = rows.slice(1);
+  for (const row of data) {
+    if (String(row[idxUser] || "").trim() === String(user_id).trim()) {
+      const idxState = headerIndex(headers, "state");
+      const idxStory = headerIndex(headers, "story_text");
+      const idxStoryId = headerIndex(headers, "story_id");
+      const idxConsent = headerIndex(headers, "consent");
+      const idxLang = headerIndex(headers, "lang");
+      const idxMsg = headerIndex(headers, "msg_count");
 
-  const idxUser = headers.indexOf("user_id");
-  const idxState = headers.indexOf("state");
-  const idxStoryText = headers.indexOf("story_text");
-  const idxStoryId = headers.indexOf("story_id");
-  const idxConsent = headers.indexOf("consent");
-
-  if (idxUser === -1) return null;
-
-  for (let i = 0; i < data.length; i++) {
-    const row = data[i];
-    if (String(row[idxUser] || "") === String(user_id)) {
       return {
-        state: row[idxState] || "IDLE",
-        story_text: row[idxStoryText] || "",
+        user_id,
+        state: row[idxState] || "",
+        story_text: row[idxStory] || "",
         story_id: row[idxStoryId] || "",
-        consent: String(row[idxConsent] || "").toLowerCase() === "true",
+        consent: String(row[idxConsent] || "").toUpperCase() === "TRUE",
+        lang: row[idxLang] || "en",
+        msg_count: Number(row[idxMsg] || 0),
       };
     }
   }
@@ -70,213 +165,167 @@ async function loadSession(user_id) {
   return null;
 }
 
-async function upsertSession({ user_id, state, story_text, story_id, consent }) {
+async function upsertSession(session) {
+  const { headers, data } = await getSessionsTable();
+  if (!headers.length) throw new Error("sessions sheet missing header row");
+
+  const idxUser = headerIndex(headers, "user_id");
+  const idxState = headerIndex(headers, "state");
+  const idxStory = headerIndex(headers, "story_text");
+  const idxStoryId = headerIndex(headers, "story_id");
+  const idxConsent = headerIndex(headers, "consent");
+  const idxLang = headerIndex(headers, "lang");
+  const idxMsg = headerIndex(headers, "msg_count");
+
+  const rowValues = Array(headers.length).fill("");
+
+  rowValues[idxUser] = session.user_id;
+  if (idxState >= 0) rowValues[idxState] = session.state || "";
+  if (idxStory >= 0) rowValues[idxStory] = session.story_text || "";
+  if (idxStoryId >= 0) rowValues[idxStoryId] = session.story_id || "";
+  if (idxConsent >= 0) rowValues[idxConsent] = session.consent ? "TRUE" : "FALSE";
+  if (idxLang >= 0) rowValues[idxLang] = session.lang || "en";
+  if (idxMsg >= 0) rowValues[idxMsg] = String(session.msg_count || 0);
+
+  const existingRowIndex0 = data.findIndex(
+    (r) => String(r[idxUser] || "").trim() === String(session.user_id).trim()
+  );
+
   const sheets = await getSheetsClient();
 
-  const rows = await readRange({
-    spreadsheetId: SHEET_ID,
-    range: `${SESSIONS_TAB}!A1:G`,
-  });
-
-  if (!rows.length) {
-    console.error("sessions tab appears empty (no header row found)");
-    return;
-  }
-
-  const headers = rows[0];
-  const data = rows.slice(1);
-
-  const idxUser = headers.indexOf("user_id");
-  if (idxUser === -1) {
-    console.error("sessions tab headers missing user_id");
-    return;
-  }
-
-  let foundSheetRowNumber = null;
-  for (let i = 0; i < data.length; i++) {
-    const row = data[i];
-    if (String(row[idxUser] || "") === String(user_id)) {
-      foundSheetRowNumber = i + 2; // header + 1-based
-      break;
-    }
-  }
-
-  const created_at = isoNow();
-  const updated_at = isoNow();
-
-  const consentVal = consent ? "true" : "false";
-
-  if (foundSheetRowNumber) {
-    // Update B-E: state, story_text, story_id, consent
+  if (existingRowIndex0 === -1) {
+    await sheets.spreadsheets.values.append({
+      spreadsheetId: SHEET_ID,
+      range: `${SESSIONS_TAB}!A:Z`,
+      valueInputOption: "RAW",
+      requestBody: { values: [rowValues] },
+    });
+  } else {
+    const sheetRowNumber = existingRowIndex0 + 2; // +1 for header, +1 for 1-based
     await sheets.spreadsheets.values.update({
       spreadsheetId: SHEET_ID,
-      range: `${SESSIONS_TAB}!B${foundSheetRowNumber}:E${foundSheetRowNumber}`,
-      valueInputOption: "USER_ENTERED",
-      requestBody: {
-        values: [[state, story_text, story_id, consentVal]],
-      },
+      range: `${SESSIONS_TAB}!A${sheetRowNumber}:Z${sheetRowNumber}`,
+      valueInputOption: "RAW",
+      requestBody: { values: [rowValues] },
     });
-
-    // Update updated_at (G)
-    await sheets.spreadsheets.values.update({
-      spreadsheetId: SHEET_ID,
-      range: `${SESSIONS_TAB}!G${foundSheetRowNumber}`,
-      valueInputOption: "USER_ENTERED",
-      requestBody: {
-        values: [[updated_at]],
-      },
-    });
-
-    return;
   }
-
-  // Insert new row
-  await sheets.spreadsheets.values.append({
-    spreadsheetId: SHEET_ID,
-    range: SESSIONS_RANGE,
-    valueInputOption: "USER_ENTERED",
-    requestBody: {
-      values: [[user_id, state, story_text, story_id, consentVal, created_at, updated_at]],
-    },
-  });
 }
 
-async function resetSession(user_id, consent) {
+async function resetToCollecting(user_id, lang) {
   await upsertSession({
     user_id,
-    state: "IDLE",
+    state: "COLLECTING",
     story_text: "",
     story_id: "",
-    consent: !!consent,
+    consent: true,
+    lang: lang || "en",
+    msg_count: 0,
   });
 }
 
+// --------------------
+// Main WhatsApp-style flow (kept)
+// --------------------
 export async function handleMessage({ from, text }) {
   const user_id = String(from || "").trim();
   const msg = String(text || "").trim();
-  const lower = msg.toLowerCase();
-
-  if (!user_id) return "Missing sender id.";
 
   let session = await loadSession(user_id);
+
+  // Create new session
   if (!session) {
-    // New user: require consent first
-    session = { state: "CONSENT", story_text: "", story_id: "", consent: false };
-    await upsertSession({ user_id, ...session });
-    await logEvent({ user_id, event: "consent_shown", details: "" });
-    return consentMessage();
-  }
-
-  const yn = normalizeYesNo(msg); // YES / NO / UNKNOWN
-
-  // HELP always works (even if stopped)
-  if (lower === "help") {
-    await logEvent({ user_id, event: "help_shown", details: "" });
-    return helpMessage();
-  }
-
-  // STOP / START
-  if (lower === "stop") {
-    await upsertSession({
+    session = {
       user_id,
-      state: "STOPPED",
+      state: "CONSENT",
       story_text: "",
       story_id: "",
-      consent: session.consent,
+      consent: false,
+      lang: "en",
+      msg_count: 0,
+    };
+    await upsertSession(session);
+  }
+
+  const lang = session.lang || "en";
+  const upper = msg.toUpperCase();
+  const yn = normalizeYesNo(msg);
+
+  // STOP / START / RESET / HELP
+  if (upper === "STOP") {
+    await upsertSession({
+      ...session,
+      state: "STOPPED",
+      consent: false,
+      msg_count: 0,
     });
-    await logEvent({ user_id, event: "stopped", details: "" });
-    return "You have opted out. Send START anytime to resume.";
+    return getText(lang, "stopped");
   }
 
-  if (lower === "start") {
-    // Re-enable user
-    // If they never consented, go to consent flow again
-    if (!session.consent) {
-      await upsertSession({
-        user_id,
-        state: "CONSENT",
-        story_text: "",
-        story_id: "",
-        consent: false,
-      });
-      await logEvent({ user_id, event: "consent_shown", details: "" });
-      return consentMessage();
-    }
-
-    await resetSession(user_id, true);
-    await logEvent({ user_id, event: "started", details: "" });
-    return "Welcome back. Please type your story. When finished, type DONE.";
+  if (upper === "START") {
+    await upsertSession({
+      ...session,
+      state: "CONSENT",
+      consent: false,
+      msg_count: 0,
+    });
+    return getText(lang, "consent");
   }
 
-  // If STOPPED, ignore everything except HELP/START (already handled above)
+  if (upper === "RESET") {
+    await resetToCollecting(user_id, lang);
+    return getText(lang, "resetDone");
+  }
+
+  if (upper === "HELP") {
+    return getText(lang, "help");
+  }
+
+  // STOPPED
   if (session.state === "STOPPED") {
-    return "";
+    return getText(lang, "stopped");
   }
 
-  // Consent flow
-  if (!session.consent || session.state === "CONSENT") {
-    if (lower === "ok" || yn === "YES") {
+  // CONSENT
+  if (session.state === "CONSENT") {
+    if (upper === "OK") {
       await upsertSession({
-        user_id,
-        state: "IDLE",
-        story_text: "",
-        story_id: "",
+        ...session,
+        state: "CHOOSE_LANG",
         consent: true,
       });
-      await logEvent({ user_id, event: "consent_accepted", details: "" });
-      return "Thank you. Please type your story. When finished, type DONE.";
+      return getText(lang, "chooseLang");
     }
-
-    return consentMessage();
+    return getText(lang, "consent");
   }
 
-  // RESET (after consent only)
-  if (lower === "reset") {
-    await resetSession(user_id, true);
-    await logEvent({ user_id, event: "reset", details: "" });
-    return "Reset done. Please type your story. When finished, type DONE.";
-  }
+  // CHOOSE_LANG
+  if (session.state === "CHOOSE_LANG") {
+    const chosen = normalizeLangChoice(msg);
+    if (!chosen) return getText(lang, "chooseLang");
 
-  // IDLE
-  if (session.state === "IDLE") {
     await upsertSession({
-      user_id,
+      ...session,
+      lang: chosen,
       state: "COLLECTING",
       story_text: "",
-      story_id: "",
-      consent: true,
+      msg_count: 0,
     });
 
-    if (isGreeting(msg) || msg === "") {
-      return "Please type your story. When finished, type DONE.";
-    }
-
-    await upsertSession({
-      user_id,
-      state: "COLLECTING",
-      story_text: msg,
-      story_id: "",
-      consent: true,
-    });
-
-    return "Added. Continue writing or type DONE.";
+    return getText(chosen, "langSet") + "\n\n" + getText(chosen, "startCollecting");
   }
 
   // COLLECTING
   if (session.state === "COLLECTING") {
-    if (isGreeting(msg) && !session.story_text) {
-      return "Please type your story. When finished, type DONE.";
-    }
+    if (!msg) return getText(lang, "startCollecting");
 
-    // Prevent accidental YES/NO being appended into story text
-    if (yn !== "UNKNOWN" && session.story_text && session.story_text.trim()) {
-      return "Please continue your story or type DONE when finished.";
-    }
+    if (isDone(msg)) {
+      let aiBlock = "";
 
-    if (lower === "done") {
-      if (!session.story_text || !session.story_text.trim()) {
-        return "I did not get any story text yet. Please type your story, then type DONE.";
-      }
+      const aiResult = await generateReflectionAndQuestion({
+        lang: session.lang || "en",
+        story_text: session.story_text,
+      });
+      if (aiResult?.combined) aiBlock = `${aiResult.combined}\n\n`;
 
       const draft = makeDraft(session.story_text);
 
@@ -286,21 +335,20 @@ export async function handleMessage({ from, text }) {
         story_text: session.story_text,
         story_id: "",
         consent: true,
+        lang: session.lang || "",
+        msg_count: 0,
       });
 
-      await logEvent({ user_id, event: "draft_shown", details: "" });
-
       return (
-        `Here is your draft:\n\n` +
+        `${aiBlock}${getText(lang, "draftIntro")}\n\n` +
         `Title: ${draft.title}\n\n` +
         `${draft.body}\n\n` +
-        `Save this story? Reply YES to save or NO to rewrite.`
+        `${getText(lang, "saveAsk")}`
       );
     }
 
-    const updatedText = session.story_text
-      ? session.story_text + "\n" + msg
-      : msg;
+    // Treat EVERYTHING as story text while collecting (including YES/NO)
+    const updatedText = session.story_text ? session.story_text + "\n" + msg : msg;
 
     await upsertSession({
       user_id,
@@ -308,80 +356,234 @@ export async function handleMessage({ from, text }) {
       story_text: updatedText,
       story_id: "",
       consent: true,
+      lang: session.lang || "",
+      msg_count: (session.msg_count || 0) + 1,
     });
 
-    return "Added. Continue writing or type DONE.";
+    return getText(lang, "added");
   }
 
   // REVIEW
   if (session.state === "REVIEW") {
     if (yn === "YES") {
+      console.log("[SAVE BRANCH] Entered YES path", {
+        user_id,
+        state: session.state,
+        storyLength: (session.story_text || "").length,
+      });
+
       const saved = await saveStory({
         user_id,
         story_text: session.story_text,
-        publish: false,
+        publish: true,
       });
+
+      console.log("[SAVE BRANCH] saveStory returned:", saved);
 
       await logEvent({ user_id, event: "story_saved", details: saved.id });
 
-      await upsertSession({
-        user_id,
-        state: "ASK_PUBLISH",
-        story_text: session.story_text,
-        story_id: saved.id,
-        consent: true,
-      });
-
-      return "Saved. Publish publicly? Reply YES to publish or NO to keep it private.";
+      await resetToCollecting(user_id, session.lang || "en");
+      return getText(lang, "published", { user_id });
     }
 
     if (yn === "NO") {
-      await upsertSession({
-        user_id,
-        state: "COLLECTING",
-        story_text: "",
-        story_id: "",
-        consent: true,
-      });
-
-      return "Okay, let’s rewrite. Please type your story again. When finished, type DONE.";
+      await resetToCollecting(user_id, session.lang || "en");
+      return getText(lang, "rewrite");
     }
 
-    return "Please reply YES to save or NO to rewrite.";
-  }
-
-  // ASK_PUBLISH
-  if (session.state === "ASK_PUBLISH") {
-    if (yn === "YES") {
-      if (session.story_id) {
-        await updatePublishStatus({ id: session.story_id, publish: true });
-      }
-
-      await logEvent({
-        user_id,
-        event: "published",
-        details: session.story_id || "",
-      });
-
-      await resetSession(user_id, true);
-      return `Published. View your stories here: /u/${user_id}`;
-    }
-
-    if (yn === "NO") {
-      await logEvent({
-        user_id,
-        event: "kept_private",
-        details: session.story_id || "",
-      });
-
-      await resetSession(user_id, true);
-      return "Okay. Kept private. You can start a new story anytime.";
-    }
-
-    return "Please reply YES to publish or NO to keep it private.";
+    return getText(lang, "saveAsk");
   }
 
   // Fallback
-  await resetSession(user_id, true);
-  return "Something went wrong. Resetting. Please type your story. When finished, type DONE.";
+  await resetToCollecting(user_id, session.lang || "en");
+  return getText(lang, "startCollecting");
+}
+
+// --------------------
+// ✅ NEW: Web App DST Builder flow
+// --------------------
+function appStartPrompt(lang) {
+  if (lang === "hi")
+    return "नमस्ते। कोई याद साझा करें। आप बोल सकते हैं या लिख सकते हैं। जब पूरा हो जाए तो DONE लिखें।";
+  if (lang === "gu")
+    return "નમસ્તે. કોઈ યાદ શેર કરો. તમે બોલી શકો અથવા લખી શકો. પૂરું થાય ત્યારે DONE લખો.";
+  return "Hello. Share a memory. Speak or type freely. When finished, type DONE.";
+}
+
+function appSaveAsk(lang) {
+  if (lang === "hi") return "ये कहानी कैसी लगी? सेव करने के लिए YES लिखें, या बदलने के लिए NO।";
+  if (lang === "gu") return "આ વાર્તા કેવી લાગી? સેવ માટે YES, બદલવા NO લખો.";
+  return "How is this story? Reply YES to save or NO to rewrite.";
+}
+
+function appSavedMsg(lang, user_id) {
+  const url = `/u/${user_id}`;
+  if (lang === "hi") return `बहुत बढ़िया। सेव हो गया। आपकी कहानियाँ: ${url}`;
+  if (lang === "gu") return `સરસ. સેવ થઈ ગયું. તમારી વાર્તાઓ: ${url}`;
+  return `Saved. Your stories: ${url}`;
+}
+
+export async function handleAppTurn({ user_id, text, lang }) {
+  const incoming = String(text || "").trim();
+  const chosenLang = lang || "hi";
+
+  let session = await loadSession(user_id);
+
+  // Create new app session
+  if (!session) {
+    await upsertSession({
+      user_id,
+      state: "APP_BUILD",
+      story_text: "",
+      story_id: "",
+      consent: true,
+      lang: chosenLang,
+      msg_count: 0,
+    });
+
+    return {
+      screen: "BUILD",
+      story_so_far: "",
+      agent_prompt: appStartPrompt(chosenLang),
+    };
+  }
+
+  // If caller sends lang, update session lang
+  if (lang && lang !== session.lang) {
+    await upsertSession({
+      ...session,
+      lang,
+    });
+    session.lang = lang;
+  }
+
+  const L = session.lang || chosenLang;
+
+  // BUILD: collect user story chunks only
+  if (session.state === "APP_BUILD") {
+    if (!incoming) {
+      return {
+        screen: "BUILD",
+        story_so_far: session.story_text || "",
+        agent_prompt: appStartPrompt(L),
+      };
+    }
+
+    if (isDone(incoming)) {
+      const draft = makeDraft(session.story_text || "");
+
+      await upsertSession({
+        ...session,
+        state: "APP_REVIEW",
+        msg_count: 0,
+      });
+
+      return {
+        screen: "REVIEW",
+        story_so_far: session.story_text || "",
+        draft,
+        agent_prompt: appSaveAsk(L),
+      };
+    }
+
+    const updatedText = session.story_text
+      ? session.story_text + "\n" + incoming
+      : incoming;
+
+    await upsertSession({
+      ...session,
+      state: "APP_BUILD",
+      story_text: updatedText,
+      msg_count: (session.msg_count || 0) + 1,
+    });
+
+    // Agent prompt (AI if enabled inside ai.js, otherwise safe fallback)
+    let agent_prompt = getText(L, "added");
+    const aiResult = await generateReflectionAndQuestion({
+      lang: L,
+      story_text: updatedText,
+    });
+    if (aiResult?.combined) agent_prompt = aiResult.combined;
+
+    return {
+      screen: "BUILD",
+      story_so_far: updatedText,
+      agent_prompt,
+    };
+  }
+
+  // REVIEW: save or rewrite
+  if (session.state === "APP_REVIEW") {
+    const yn = normalizeYesNo(incoming);
+
+    if (yn === "YES") {
+      const saved = await saveStory({
+        user_id,
+        story_text: session.story_text || "",
+        publish: true,
+      });
+
+      await logEvent({ user_id, event: "story_saved_app", details: saved.id });
+
+      await upsertSession({
+        user_id,
+        state: "APP_BUILD",
+        story_text: "",
+        story_id: "",
+        consent: true,
+        lang: L,
+        msg_count: 0,
+      });
+
+      return {
+        screen: "SUCCESS",
+        story_so_far: "",
+        agent_prompt: appSavedMsg(L, user_id),
+        saved_url: `/u/${user_id}`,
+      };
+    }
+
+    if (yn === "NO") {
+      await upsertSession({
+        user_id,
+        state: "APP_BUILD",
+        story_text: "",
+        story_id: "",
+        consent: true,
+        lang: L,
+        msg_count: 0,
+      });
+
+      return {
+        screen: "BUILD",
+        story_so_far: "",
+        agent_prompt: appStartPrompt(L),
+      };
+    }
+
+    const draft = makeDraft(session.story_text || "");
+    return {
+      screen: "REVIEW",
+      story_so_far: session.story_text || "",
+      draft,
+      agent_prompt: appSaveAsk(L),
+    };
+  }
+
+  // Any other state: reset to app
+  await upsertSession({
+    user_id,
+    state: "APP_BUILD",
+    story_text: "",
+    story_id: "",
+    consent: true,
+    lang: L,
+    msg_count: 0,
+  });
+
+  return {
+    screen: "BUILD",
+    story_so_far: "",
+    agent_prompt: appStartPrompt(L),
+  };
 }

@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="gu">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -15,6 +15,7 @@
       --accent:#2f6f4e;
       --mic:#6b4eff;
       --micOn:#d43b3b;
+      --soft:#f1efe9;
     }
     *{ box-sizing:border-box; }
     body{
@@ -26,7 +27,7 @@
       overflow:hidden;
     }
     .wrap{
-      max-width:780px;
+      max-width:820px;
       margin:0 auto;
       height:100vh;
       display:flex;
@@ -44,6 +45,44 @@
       color:var(--muted);
       margin:0 14px 10px;
     }
+
+    .topRow{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:10px;
+      margin:0 12px 10px;
+    }
+    .pill{
+      font-size:13px;
+      color:#333;
+      background:#fff;
+      border:1px solid var(--border);
+      border-radius:999px;
+      padding:8px 10px;
+      max-width:55%;
+      overflow:hidden;
+      text-overflow:ellipsis;
+      white-space:nowrap;
+    }
+    .topActions{
+      display:flex;
+      gap:8px;
+      flex-wrap:wrap;
+      justify-content:flex-end;
+    }
+
+    .main{
+      flex:1;
+      padding:0 12px 12px;
+      overflow:hidden;
+      display:flex;
+      flex-direction:column;
+      gap:12px;
+    }
+    .screen{ display:none; flex:1; overflow:hidden; }
+    .screen.active{ display:flex; flex-direction:column; gap:12px; }
+
     .card{
       background:var(--card);
       border:1px solid var(--border);
@@ -51,19 +90,12 @@
       padding:14px;
       box-shadow: 0 1px 2px rgba(0,0,0,0.04);
     }
-    .main{
-      flex:1;
-      padding:0 12px 10px;
-      overflow:hidden;
-      display:flex;
-      flex-direction:column;
-      gap:12px;
+    .label{
+      font-size:13px;
+      color:var(--muted);
+      margin-bottom:8px;
     }
 
-    .screen{ display:none; flex:1; overflow:hidden; }
-    .screen.active{ display:flex; flex-direction:column; gap:12px; }
-
-    .formRow{ display:flex; gap:10px; }
     input, select{
       width:100%;
       font-size:18px;
@@ -90,71 +122,72 @@
       border-radius:14px;
     }
     .secondary{
-      background:#f1efe9;
+      background:var(--soft);
       border:1px solid var(--border);
       color:#333;
     }
+    .secondary[disabled],
+    .primary[disabled]{
+      opacity:0.6;
+      cursor:not-allowed;
+    }
 
-    .twoCards{
+    /* BUILDER v2 layout (A) */
+    .builder{
+      flex:1;
+      overflow:hidden;
       display:flex;
       flex-direction:column;
       gap:12px;
-      overflow:hidden;
+    }
+    .promptStage{
       flex:1;
-    }
-    .label{
-      font-size:13px;
-      color:var(--muted);
-      margin-bottom:8px;
-    }
-
-    #storyBox{
-      flex:1;
-      overflow:auto;
-      min-height:180px;
-      font-size:19px;
-      line-height:1.75;
-      white-space:pre-wrap;
-    }
-
-    #promptBox{
-      font-size:18px;
-      line-height:1.6;
-      white-space:pre-wrap;
-    }
-
-    .bottomBar{
-      position:sticky;
-      bottom:0;
-      padding:10px 12px 14px;
-      background:transparent;
-    }
-    .bottomInner{
-      background:var(--card);
-      border:1px solid var(--border);
-      border-radius:16px;
-      padding:12px;
-      box-shadow: 0 1px 2px rgba(0,0,0,0.04);
       display:flex;
       flex-direction:column;
-      gap:10px;
+      justify-content:center;
+      align-items:center;
+      gap:16px;
+      padding:8px 8px 0;
+      overflow:hidden;
     }
-    .toolsRow{
+    #promptBig{
+      width:100%;
+      max-width:720px;
+      text-align:center;
+      font-size:26px;
+      line-height:1.35;
+      padding:18px 18px;
+      border-radius:18px;
+      background:var(--card);
+      border:1px solid var(--border);
+      box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+      white-space:pre-wrap;
+    }
+    .controlsRow{
+      width:100%;
+      max-width:720px;
       display:flex;
       align-items:center;
       justify-content:space-between;
       gap:12px;
+      padding:8px 6px;
+    }
+    .doneBtn{
+      min-width:92px;
+      padding:14px 14px;
+      border-radius:14px;
     }
     .micZone{
       flex:1;
       display:flex;
       flex-direction:column;
       align-items:center;
-      gap:8px;
+      gap:10px;
+      min-width:0;
     }
     .micBtn{
-      width:82px;
-      height:82px;
+      width:98px;
+      height:98px;
       border-radius:999px;
       background:var(--mic);
       display:flex;
@@ -162,19 +195,46 @@
       justify-content:center;
       border:none;
       cursor:pointer;
-      box-shadow: 0 10px 22px rgba(107,78,255,0.20);
+      box-shadow: 0 12px 28px rgba(107,78,255,0.22);
     }
     .micBtn.listening{
       background:var(--micOn);
-      box-shadow: 0 10px 22px rgba(212,59,59,0.18);
+      box-shadow: 0 12px 28px rgba(212,59,59,0.18);
     }
-    .micIcon{ width:34px; height:34px; fill:#fff; }
+    .micIcon{ width:38px; height:38px; fill:#fff; }
     #micHint{
       font-size:14px;
       color:var(--muted);
       text-align:center;
-      line-height:1.3;
+      line-height:1.35;
+      max-width:520px;
     }
+
+    .typeDock{
+      width:100%;
+      max-width:720px;
+      background:var(--card);
+      border:1px solid var(--border);
+      border-radius:16px;
+      padding:10px;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+    }
+    .typeTop{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:10px;
+      margin-bottom:8px;
+    }
+    .smallLink{
+      background:transparent;
+      border:1px solid var(--border);
+      color:#333;
+      padding:10px 12px;
+      border-radius:12px;
+      font-size:15px;
+    }
+    .smallLink[disabled]{ opacity:0.6; cursor:not-allowed; }
 
     #typeArea{ display:none; gap:10px; }
     #typeArea.open{ display:flex; }
@@ -182,32 +242,31 @@
     .sendBtn{ background:var(--accent); color:#fff; min-width:86px; }
     .sendBtn[disabled]{ opacity:0.6; cursor:not-allowed; }
 
-    .topRow{
-      display:flex;
-      align-items:center;
-      justify-content:space-between;
-      gap:10px;
-      margin:0 12px;
-    }
-    .pill{
-      font-size:13px;
-      color:#333;
-      background:#fff;
+    /* Collapsible story */
+    #storyPanel{ display:none; margin-top:10px; }
+    #storyPanel.open{ display:block; }
+    #storyBox{
+      max-height:26vh;
+      overflow:auto;
+      font-size:18px;
+      line-height:1.7;
+      white-space:pre-wrap;
+      padding:12px;
       border:1px solid var(--border);
-      border-radius:999px;
-      padding:8px 10px;
+      border-radius:14px;
+      background:#fff;
     }
 
+    /* REVIEW + SUCCESS */
     #draftBox{
       font-size:18px;
       line-height:1.7;
       white-space:pre-wrap;
-      max-height:46vh;
+      max-height:52vh;
       overflow:auto;
     }
     .btnRow{ display:flex; gap:10px; }
     .btnRow button{ flex:1; }
-
     .tiny{
       font-size:13px;
       color:var(--muted);
@@ -215,11 +274,11 @@
       margin-top:10px;
     }
 
-    @media (max-width:420px){
-      header{ font-size:21px; }
-      #storyBox{ font-size:18px; }
-      #promptBox{ font-size:17px; }
-      .micBtn{ width:78px; height:78px; }
+    @media (max-width:480px){
+      #promptBig{ font-size:22px; }
+      .micBtn{ width:92px; height:92px; }
+      .doneBtn{ min-width:86px; }
+      .pill{ max-width:48%; }
     }
   </style>
 </head>
@@ -227,11 +286,11 @@
 <body>
   <div class="wrap">
     <header>Kahani</header>
-    <div class="sub" id="subtitle">A calm place to tell your story.</div>
+    <div class="sub" id="subtitle">Speak freely. The agent will guide you.</div>
 
     <div class="topRow">
       <div class="pill" id="whoPill" style="display:none;"></div>
-      <div style="display:flex; gap:8px;">
+      <div class="topActions">
         <button class="secondary" id="storiesBtn" style="display:none;" onclick="openStories()">My Stories</button>
         <button class="secondary" id="newBtn" style="display:none;" onclick="startNewStory()">New Story</button>
       </div>
@@ -242,20 +301,20 @@
       <!-- WELCOME -->
       <div class="screen active" id="screenWelcome">
         <div class="card">
-          <div class="label">First name (displayed)</div>
+          <div class="label">First name</div>
           <input id="firstName" placeholder="e.g., Shanta" />
 
           <div style="height:10px;"></div>
 
-          <div class="label">Age (for ID)</div>
+          <div class="label">Age</div>
           <input id="age" inputmode="numeric" placeholder="e.g., 67" />
 
           <div style="height:10px;"></div>
 
           <div class="label">Language</div>
           <select id="lang">
-            <option value="gu">Gujarati</option>
             <option value="hi">Hindi</option>
+            <option value="gu">Gujarati</option>
             <option value="en">English</option>
           </select>
 
@@ -264,34 +323,19 @@
           <button class="primary" onclick="saveProfile()">Continue</button>
 
           <div class="tiny">
-            Note: mic on phones will work reliably after HTTPS deployment. On laptop it usually works.
+            Tip: On phones, microphone works best over HTTPS (Render).
           </div>
         </div>
       </div>
 
-      <!-- BUILDER -->
+      <!-- BUILDER (v2) -->
       <div class="screen" id="screenBuilder">
-        <div class="twoCards">
-          <div class="card" style="flex:1; overflow:hidden;">
-            <div class="label">Your story so far</div>
-            <div id="storyBox"></div>
-          </div>
+        <div class="builder">
+          <div class="promptStage">
+            <div id="promptBig">…</div>
 
-          <div class="card">
-            <div class="label">Prompt</div>
-            <div id="promptBox">…</div>
-          </div>
-        </div>
-
-        <div class="bottomBar">
-          <div class="bottomInner">
-            <div id="typeArea">
-              <input id="typeInput" placeholder="Type (optional)" />
-              <button class="sendBtn" id="sendTypedBtn" onclick="sendTyped()">Send</button>
-            </div>
-
-            <div class="toolsRow">
-              <button class="secondary" id="typeToggle" onclick="toggleTyping()">Type</button>
+            <div class="controlsRow">
+              <button class="secondary doneBtn" id="doneBtn" onclick="endStory()">Done</button>
 
               <div class="micZone">
                 <button class="micBtn" id="micBtn" onclick="toggleMic()" title="Speak">
@@ -299,10 +343,27 @@
                     <path d="M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-3.08A7 7 0 0 0 19 11h-2z"/>
                   </svg>
                 </button>
-                <div id="micHint">Tap mic, speak. Then the agent will ask the next question.</div>
+                <div id="micHint">Tap mic, speak. When finished, tap Done.</div>
               </div>
 
-              <button class="secondary" id="doneBtn" onclick="endStory()">Done</button>
+              <button class="secondary doneBtn" id="cardsBtn" onclick="pickCard()">Pick a Prompt</button>
+            </div>
+
+            <div class="typeDock">
+              <div class="typeTop">
+                <button class="smallLink" id="typeToggle" onclick="toggleTyping()">Type</button>
+                <button class="smallLink" id="storyToggle" onclick="toggleStoryPanel()">Show story</button>
+              </div>
+
+              <div id="typeArea">
+                <input id="typeInput" placeholder="Type (optional)" />
+                <button class="sendBtn" id="sendTypedBtn" onclick="sendTyped()">Send</button>
+              </div>
+
+              <div id="storyPanel">
+                <div class="label" style="margin:10px 0 8px;">Your story so far</div>
+                <div id="storyBox"></div>
+              </div>
             </div>
           </div>
         </div>
@@ -350,8 +411,17 @@
       userId: null,
       firstName: null,
       age: null,
-      lang: "gu",
-      busy: false
+      lang: "hi",
+      busy: false,
+      lastStoryText: "",
+      cards: [
+        // Simple starter prompts (we will replace with your MANAN deck content next)
+        { hi:"जब मैं छोटा/छोटी थी…", gu:"જ્યારે હું નાનો/નાની હતો…", en:"When I was younger…" },
+        { hi:"मेरी सबसे प्यारी याद…", gu:"મારી સૌથી ગમતી યાદ…", en:"A memory I love…" },
+        { hi:"एक ऐसा दिन जो मैं नहीं भूलता/भूलती…", gu:"એક એવો દિવસ જે હું ભૂલતો/ભૂલતી નથી…", en:"A day I never forget…" },
+        { hi:"मेरे स्कूल का एक किस्सा…", gu:"મારા શાળાનો એક કિસ્સો…", en:"A story from my school…" },
+        { hi:"किसी ने जो बात मुझे याद रह गई…", gu:"કોઈએ કહ્યું એવું જે યાદ રહી ગયું…", en:"Something someone said that stayed with me…" }
+      ]
     };
 
     const els = {
@@ -369,8 +439,10 @@
       age: document.getElementById("age"),
       lang: document.getElementById("lang"),
 
+      promptBig: document.getElementById("promptBig"),
+      storyToggle: document.getElementById("storyToggle"),
+      storyPanel: document.getElementById("storyPanel"),
       storyBox: document.getElementById("storyBox"),
-      promptBox: document.getElementById("promptBox"),
 
       typeArea: document.getElementById("typeArea"),
       typeToggle: document.getElementById("typeToggle"),
@@ -383,6 +455,7 @@
       draftBox: document.getElementById("draftBox"),
       successMsg: document.getElementById("successMsg"),
       doneBtn: document.getElementById("doneBtn"),
+      cardsBtn: document.getElementById("cardsBtn"),
     };
 
     function showScreen(id){
@@ -398,17 +471,19 @@
       els.doneBtn.disabled = state.busy;
       els.typeToggle.disabled = state.busy;
       els.micBtn.disabled = state.busy;
+      els.storyToggle.disabled = state.busy;
+      els.cardsBtn.disabled = state.busy;
     }
 
     function loadProfile(){
-      const raw = localStorage.getItem("kahanibot_profile_v1");
+      const raw = localStorage.getItem("kahanibot_profile_v2");
       if (!raw) return false;
       try{
         const p = JSON.parse(raw);
         state.userId = p.userId;
         state.firstName = p.firstName;
         state.age = p.age;
-        state.lang = p.lang || "gu";
+        state.lang = p.lang || "hi";
         return true;
       }catch{ return false; }
     }
@@ -418,7 +493,7 @@
       els.whoPill.textContent = state.firstName;
       els.storiesBtn.style.display = "inline-block";
       els.newBtn.style.display = "inline-block";
-      els.subtitle.textContent = "Speak freely. Your story will build on the screen.";
+      els.subtitle.textContent = "Speak freely. The agent will guide you.";
       els.lang.value = state.lang;
     }
 
@@ -439,7 +514,7 @@
       state.age = age;
       state.lang = lang;
 
-      localStorage.setItem("kahanibot_profile_v1", JSON.stringify({
+      localStorage.setItem("kahanibot_profile_v2", JSON.stringify({
         userId, firstName: fn, age, lang
       }));
 
@@ -454,6 +529,7 @@
 
     function setStorySoFar(storyText){
       const t = String(storyText || "");
+      state.lastStoryText = t;
       els.storyBox.textContent = t;
       els.storyBox.scrollTop = els.storyBox.scrollHeight;
     }
@@ -485,7 +561,7 @@
       }
 
       if (data.screen === "BUILD") {
-        els.promptBox.textContent = data.agent_prompt || "";
+        els.promptBig.textContent = data.agent_prompt || "";
         showScreen("screenBuilder");
         return;
       }
@@ -494,7 +570,6 @@
         const title = data.draft?.title ? data.draft.title : "";
         const body  = data.draft?.body  ? data.draft.body  : "";
         els.draftBox.textContent = (title ? title + "\n\n" : "") + body;
-        els.promptBox.textContent = data.agent_prompt || "";
         showScreen("screenReview");
         return;
       }
@@ -506,18 +581,17 @@
       }
 
       // fallback
-      els.promptBox.textContent = data.agent_prompt || "";
+      els.promptBig.textContent = data.agent_prompt || "";
       showScreen("screenBuilder");
     }
 
     async function syncOnLoad(){
-      // Pull current session state (re-entry support)
       try{
         setBusy(true);
         const data = await apiTurn("");
         renderFromServer(data);
       } catch(e){
-        els.promptBox.textContent = "Could not connect to server.";
+        els.promptBig.textContent = "Could not connect to server.";
         showScreen("screenBuilder");
       } finally {
         setBusy(false);
@@ -530,29 +604,28 @@
 
       try{
         setBusy(true);
+        els.promptBig.textContent = "…";
         const data = await apiTurn(t);
         renderFromServer(data);
       } catch(e){
-        els.promptBox.textContent = "Server error. Please try again.";
+        els.promptBig.textContent = "Server error. Please try again.";
       } finally {
         setBusy(false);
       }
     }
 
     async function startNewStory(){
-      // If a story is already in progress, this UI-only "New Story" may confuse backend.
-      // We do a simple safe reset: if there is text, we force a review then NO (discard).
-      const current = (els.storyBox.textContent || "").trim();
+      // Soft reset: if there is a story in progress, finalize + discard to reset backend state
+      const current = (state.lastStoryText || "").trim();
 
       showScreen("screenBuilder");
-      els.promptBox.textContent = "...";
+      els.promptBig.textContent = "…";
       setStorySoFar("");
 
       try{
         setBusy(true);
 
         if (current.length > 0) {
-          // Create draft (DONE), then discard (NO) to reset session
           await apiTurn("DONE");
           await apiTurn("NO");
         }
@@ -560,7 +633,7 @@
         const data = await apiTurn("");
         renderFromServer(data);
       } catch(e){
-        els.promptBox.textContent = "Could not start a new story.";
+        els.promptBig.textContent = "Could not start a new story.";
       } finally {
         setBusy(false);
       }
@@ -581,7 +654,7 @@
     // Typing UI
     function toggleTyping(){
       const open = els.typeArea.classList.toggle("open");
-      els.typeToggle.textContent = open ? "Hide" : "Type";
+      els.typeToggle.textContent = open ? "Hide typing" : "Type";
       if (open) setTimeout(()=>els.typeInput.focus(), 50);
     }
 
@@ -599,6 +672,26 @@
       }
     });
 
+    // Story panel
+    function toggleStoryPanel(){
+      const open = els.storyPanel.classList.toggle("open");
+      els.storyToggle.textContent = open ? "Hide story" : "Show story";
+      if (open) {
+        els.storyBox.scrollTop = els.storyBox.scrollHeight;
+      }
+    }
+
+    // Cards (starter prompts)
+    async function pickCard(){
+      const pack = state.cards;
+      const c = pack[Math.floor(Math.random() * pack.length)];
+      const prompt = (c && (c[state.lang] || c.en)) || "";
+      if (!prompt) return;
+
+      // Put the card prompt into the story (as a starter line), and let AI respond.
+      await sendChunk(prompt);
+    }
+
     // Speech to text
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     let recognition = null;
@@ -607,41 +700,41 @@
     if (SpeechRecognition){
       recognition = new SpeechRecognition();
       recognition.interimResults = false;
-      recognition.continuous = true;
+      recognition.continuous = true;   // keep listening
       recognition.maxAlternatives = 1;
 
       recognition.onstart = ()=>{
         listening = true;
         els.micBtn.classList.add("listening");
-        els.micHint.textContent = "Listening… tap again to stop";
+        els.micHint.textContent = "Listening… tap mic again to stop";
       };
+
       recognition.onend = ()=>{
         listening = false;
         els.micBtn.classList.remove("listening");
-        els.micHint.textContent = "Captured. You can speak again, or tap Done when finished.";
+        els.micHint.textContent = "Tap mic, speak. When finished, tap Done.";
       };
+
       recognition.onerror = ()=>{
-        els.promptBox.textContent = "Mic permission blocked here. It will work reliably after HTTPS deployment.";
+        els.promptBig.textContent = "Mic permission blocked. Try HTTPS (Render) or use typing.";
       };
+
       recognition.onresult = async (event) => {
-  let fullText = "";
+        let fullText = "";
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          fullText += event.results[i][0].transcript + " ";
+        }
+        const chunk = fullText.trim();
+        if (!chunk) return;
 
-  for (let i = event.resultIndex; i < event.results.length; i++) {
-    fullText += event.results[i][0].transcript + " ";
-  }
+        if (chunk.toLowerCase() === "done") {
+          recognition.stop();
+          await sendChunk("DONE");
+          return;
+        }
 
-  const chunk = fullText.trim();
-  if (!chunk) return;
-
-  // If user says DONE by voice, finish story
-  if (chunk.toLowerCase() === "done") {
-    recognition.stop();
-    await sendChunk("DONE");
-    return;
-  }
-
-  await sendChunk(chunk);
-};
+        await sendChunk(chunk);
+      };
     } else {
       els.micHint.textContent = "Mic not supported in this browser.";
     }
@@ -673,10 +766,12 @@
     window.startNewStory = startNewStory;
     window.toggleTyping = toggleTyping;
     window.sendTyped = sendTyped;
+    window.toggleStoryPanel = toggleStoryPanel;
     window.toggleMic = toggleMic;
     window.endStory = endStory;
     window.saveStoryYes = saveStoryYes;
     window.reviseStory = reviseStory;
+    window.pickCard = pickCard;
   </script>
 </body>
 </html>

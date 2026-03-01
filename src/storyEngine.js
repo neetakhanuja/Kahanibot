@@ -7,17 +7,15 @@ function normalizeYesNo(text) {
   return "UNKNOWN";
 }
 
-// Simple draft generator for V1 (no AI yet)
+// Simple local draft generator (non-AI fallback)
 function makeDraft(transcript) {
   const clean = (transcript || "").trim();
 
-  // Split into non-empty lines
   const lines = clean
     .split("\n")
     .map((l) => l.trim())
     .filter(Boolean);
 
-  // Words to ignore as title
   const greetingWords = new Set([
     "hello",
     "hi",
@@ -29,13 +27,10 @@ function makeDraft(transcript) {
     "good evening",
   ]);
 
-  // Find first meaningful line
   const firstMeaningful =
     lines.find((l) => !greetingWords.has(l.toLowerCase())) || "A Memory";
 
   const title = firstMeaningful.slice(0, 60);
-
-  // ✅ conversation.js expects draft.body
   const body = clean;
 
   return { title, body };

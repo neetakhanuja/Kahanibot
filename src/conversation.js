@@ -3,7 +3,7 @@ import { getSheetsClient, readRange } from "./sheets.js";
 import { saveStory } from "./storyStore.js";
 import { makeDraft, normalizeYesNo } from "./storyEngine.js";
 import { logEvent } from "./logger.js";
-import { generateReflectionAndQuestion } from "./ai.js";
+import { generateReflectionAndQuestion, polishStory } from "./ai.js";
 
 const SHEET_ID = process.env.GOOGLE_SHEET_ID;
 const SESSIONS_TAB = "sessions";
@@ -58,106 +58,94 @@ function getText(lang, key, vars = {}) {
       chooseLang: "भाषा चुनें (1/2/3):\n1) हिंदी\n2) गुजराती\n3) English",
 
       startCollecting:
-        "ठीक है। अपनी याद साझा करें। आराम से बोलें या लिखें। जब पूरा हो जाए, DONE लिखें।",
+        "ठीक है। अपनी याद साझा करें। आप बोल सकते हैं या लिख सकते हैं। जब पूरा हो जाए तो DONE लिखें।",
       added: "धन्यवाद। आगे बताइए। (पूरा होने पर DONE लिखें।)",
 
       draftIntro: "यह आपका ड्राफ्ट है:",
-      saveAsk: "क्या इसे सेव करें? सेव के लिए YES, दोबारा लिखने के लिए NO।",
-      rewrite: "ठीक है। कृपया कहानी फिर से साझा करें। पूरा होने पर DONE लिखें।",
+      saveAsk: "इसे सेव करें? सेव के लिए YES, दोबारा लिखने के लिए NO।",
+      rewrite: "ठीक है। कृपया कहानी फिर से बताइए। पूरा होने पर DONE लिखें।",
 
-      published: `सेव हो गया। यहाँ देखें: /u/${vars.user_id || ""}`,
+      published: `सेव हो गया। आपकी कहानियाँ: /u/${vars.user_id || ""}`,
 
-      stopped: "आपने ऑप्ट आउट कर लिया है। फिर शुरू करने के लिए START लिखें।",
+      stopped: "आपने रोक दिया है। फिर से शुरू करने के लिए START लिखें।",
       resetDone: "रीसेट हो गया।",
       help:
-        "Commands: HELP, RESET, STOP, START\n\nFlow:\n• कहानी साझा करें\n• DONE लिखें\n• सेव के लिए YES या बदलने के लिए NO",
-      langSet: "ठीक है। अब मैं आपकी चुनी हुई भाषा में आगे बढ़ूँगा/बढ़ूँगी।",
+        "कमांड: HELP, RESET, STOP, START\n\nकैसे काम करता है:\n• कहानी बताइए\n• DONE लिखिए\n• सेव के लिए YES, बदलने के लिए NO",
+      langSet: "ठीक है। मैं आपकी चुनी भाषा में जारी रखूँगा/रखूँगी।",
     },
 
     gu: {
       consent:
-        "શરુ કરવા પહેલા: આ બોટ વાર્તા ગોઠવવામાં મદદ કરે છે. અભ્યાસ માટે તમારા સંદેશાઓ સેવ થઈ શકે છે. આગળ વધવા OK લખો. ક્યારે પણ STOP લખી શકો છો.",
-      chooseLang: "ભાષા પસંદ કરો (1/2/3):\n1) Hindi\n2) ગુજરાતી\n3) English",
+        "શરૂ કરતા પહેલા: આ તમારી વાર્તા ગોઠવવામાં મદદ કરે છે. અભ્યાસ માટે સંદેશાઓ સેવ થઈ શકે છે. આગળ વધવા OK લખો. ક્યારે પણ STOP લખી શકો.",
+      chooseLang: "ભાષા પસંદ કરો (1/2/3):\n1) Hindi\n2) Gujarati\n3) English",
 
       startCollecting:
-        "બરાબર. તમારી યાદ શેર કરો. આરામથી બોલો અથવા લખો. પૂરું થાય ત્યારે DONE લખો.",
+        "બરાબર. તમારી યાદ શેર કરો. તમે બોલી શકો અથવા લખી શકો. પૂરું થાય ત્યારે DONE લખો.",
       added: "આભાર. આગળ કહો. (પૂરું થાય ત્યારે DONE લખો.)",
 
-      draftIntro: "આ તમારો ડ્રાફ્ટ છે:",
-      saveAsk: "આ વાર્તા સેવ કરવી? સેવ માટે YES, ફરી લખવા NO.",
-      rewrite: "બરાબર. કૃપા કરીને વાર્તા ફરીથી શેર કરો. પૂરું થાય ત્યારે DONE લખો.",
+      draftIntro: "આ રહ્યો તમારો ડ્રાફ્ટ:",
+      saveAsk: "સેવ કરવું છે? સેવ માટે YES, ફરી લખવા NO.",
+      rewrite: "બરાબર. કૃપા કરીને વાર્તા ફરી કહો. પૂરું થાય ત્યારે DONE લખો.",
 
-      published: `સેવ થઈ ગયું. અહીં જુઓ: /u/${vars.user_id || ""}`,
+      published: `સેવ થઈ ગયું. તમારી વાર્તાઓ: /u/${vars.user_id || ""}`,
 
-      stopped: "તમે ઑપ્ટ આઉટ કર્યું છે. ફરી શરૂ કરવા START લખો.",
+      stopped: "તમે રોકી દીધું છે. ફરી શરૂ કરવા START લખો.",
       resetDone: "રીસેટ થઈ ગયું.",
       help:
-        "Commands: HELP, RESET, STOP, START\n\nFlow:\n• વાર્તા શેર કરો\n• DONE લખો\n• સેવ માટે YES અથવા બદલવા NO",
-      langSet: "બરાબર. હવે હું તમારી પસંદ કરેલી ભાષામાં આગળ વધું છું.",
+        "કમાન્ડ: HELP, RESET, STOP, START\n\nકેવી રીતે કામ કરે છે:\n• વાર્તા કહો\n• DONE લખો\n• સેવ માટે YES, બદલવા NO",
+      langSet: "બરાબર. હું તમારી પસંદ કરેલી ભાષામાં ચાલુ રાખીશ.",
     },
   };
 
-  const pack = strings[L] || strings.en;
-  return pack[key] || strings.en[key] || "";
+  return strings[L]?.[key] || strings.en[key] || "";
 }
 
 function headerIndex(headers, name) {
-  return headers.findIndex((h) => String(h || "").trim() === name);
-}
-
-function normalizeHeaderRow(row) {
-  return (row || []).map((h) => String(h || "").trim());
+  const idx = (headers || []).findIndex(
+    (h) => String(h || "").trim().toLowerCase() === String(name || "").trim().toLowerCase()
+  );
+  return idx;
 }
 
 function isDone(msg) {
-  return String(msg || "").trim().toUpperCase() === "DONE";
+  const t = String(msg || "").trim().toLowerCase();
+  return t === "done" || t === "finish" || t === "end";
 }
 
 // --------------------
-// Sessions
+// Sheets session store
 // --------------------
-async function getSessionsTable() {
-  if (!SHEET_ID) {
-    throw new Error(
-      "GOOGLE_SHEET_ID is missing in environment. Set it in .env or Render."
-    );
-  }
-
-  const rows = await readRange({
-    spreadsheetId: SHEET_ID,
-    range: `${SESSIONS_TAB}!A1:Z`,
-  });
-  if (!rows.length) return { headers: [], data: [] };
-
-  const headers = normalizeHeaderRow(rows[0]);
-  const data = rows.slice(1);
-  return { headers, data };
-}
-
 async function loadSession(user_id) {
-  const { headers, data } = await getSessionsTable();
-  if (!headers.length) return null;
+  const sheets = await getSheetsClient();
+  const range = `${SESSIONS_TAB}!A:Z`;
+  const rows = await readRange({ sheets, spreadsheetId: SHEET_ID, range });
 
+  if (!rows?.length) return null;
+
+  const headers = rows[0];
   const idxUser = headerIndex(headers, "user_id");
-  if (idxUser < 0) return null;
+  if (idxUser === -1) return null;
 
-  for (const row of data) {
-    if (String(row[idxUser] || "").trim() === String(user_id).trim()) {
-      const idxState = headerIndex(headers, "state");
-      const idxStory = headerIndex(headers, "story_text");
-      const idxStoryId = headerIndex(headers, "story_id");
-      const idxConsent = headerIndex(headers, "consent");
-      const idxLang = headerIndex(headers, "lang");
-      const idxMsg = headerIndex(headers, "msg_count");
+  const idxState = headerIndex(headers, "state");
+  const idxStory = headerIndex(headers, "story_text");
+  const idxStoryId = headerIndex(headers, "story_id");
+  const idxConsent = headerIndex(headers, "consent");
+  const idxLang = headerIndex(headers, "lang");
+  const idxMsgCount = headerIndex(headers, "msg_count");
 
+  for (let r = 1; r < rows.length; r++) {
+    const row = rows[r] || [];
+    if (String(row[idxUser] || "") === String(user_id)) {
       return {
+        headers,
+        rowIndex: r + 1, // 1-based, incl header row
         user_id,
         state: row[idxState] || "",
         story_text: row[idxStory] || "",
         story_id: row[idxStoryId] || "",
-        consent: String(row[idxConsent] || "").toUpperCase() === "TRUE",
-        lang: row[idxLang] || "en",
-        msg_count: Number(row[idxMsg] || 0),
+        consent: String(row[idxConsent] || "").toLowerCase() === "true",
+        lang: row[idxLang] || "",
+        msg_count: Number(row[idxMsgCount] || 0),
       };
     }
   }
@@ -166,51 +154,65 @@ async function loadSession(user_id) {
 }
 
 async function upsertSession(session) {
-  const { headers, data } = await getSessionsTable();
-  if (!headers.length) throw new Error("sessions sheet missing header row");
-
-  const idxUser = headerIndex(headers, "user_id");
-  const idxState = headerIndex(headers, "state");
-  const idxStory = headerIndex(headers, "story_text");
-  const idxStoryId = headerIndex(headers, "story_id");
-  const idxConsent = headerIndex(headers, "consent");
-  const idxLang = headerIndex(headers, "lang");
-  const idxMsg = headerIndex(headers, "msg_count");
-
-  const rowValues = Array(headers.length).fill("");
-
-  rowValues[idxUser] = session.user_id;
-  if (idxState >= 0) rowValues[idxState] = session.state || "";
-  if (idxStory >= 0) rowValues[idxStory] = session.story_text || "";
-  if (idxStoryId >= 0) rowValues[idxStoryId] = session.story_id || "";
-  if (idxConsent >= 0) rowValues[idxConsent] = session.consent ? "TRUE" : "FALSE";
-  if (idxLang >= 0) rowValues[idxLang] = session.lang || "en";
-  if (idxMsg >= 0) rowValues[idxMsg] = String(session.msg_count || 0);
-
-  const existingRowIndex0 = data.findIndex(
-    (r) => String(r[idxUser] || "").trim() === String(session.user_id).trim()
-  );
-
   const sheets = await getSheetsClient();
+  const range = `${SESSIONS_TAB}!A:Z`;
+  const rows = await readRange({ sheets, spreadsheetId: SHEET_ID, range });
 
-  if (existingRowIndex0 === -1) {
-    await sheets.spreadsheets.values.append({
-      spreadsheetId: SHEET_ID,
-      range: `${SESSIONS_TAB}!A:Z`,
-      valueInputOption: "RAW",
-      requestBody: { values: [rowValues] },
-    });
-  } else {
-    const sheetRowNumber = existingRowIndex0 + 2; // +1 for header, +1 for 1-based
-    await sheets.spreadsheets.values.update({
-      spreadsheetId: SHEET_ID,
-      range: `${SESSIONS_TAB}!A${sheetRowNumber}:Z${sheetRowNumber}`,
-      valueInputOption: "RAW",
-      requestBody: { values: [rowValues] },
-    });
+  if (!rows?.length) throw new Error("sessions tab missing");
+
+  const headers = rows[0];
+
+  function col(name) {
+    const i = headerIndex(headers, name);
+    if (i === -1) throw new Error(`Missing column in sessions: ${name}`);
+    return i;
   }
+
+  const idxUser = col("user_id");
+  const idxState = col("state");
+  const idxStory = col("story_text");
+  const idxStoryId = col("story_id");
+  const idxConsent = col("consent");
+  const idxLang = col("lang");
+  const idxMsgCount = col("msg_count");
+  const idxUpdated = headerIndex(headers, "updated_at");
+
+  let foundRowIndex = -1;
+  for (let r = 1; r < rows.length; r++) {
+    const row = rows[r] || [];
+    if (String(row[idxUser] || "") === String(session.user_id)) {
+      foundRowIndex = r + 1;
+      break;
+    }
+  }
+
+  const outRow = new Array(headers.length).fill("");
+  outRow[idxUser] = session.user_id;
+  outRow[idxState] = session.state || "";
+  outRow[idxStory] = session.story_text || "";
+  outRow[idxStoryId] = session.story_id || "";
+  outRow[idxConsent] = String(!!session.consent);
+  outRow[idxLang] = session.lang || "";
+  outRow[idxMsgCount] = String(session.msg_count || 0);
+  if (idxUpdated !== -1) outRow[idxUpdated] = isoNow();
+
+  const writeRange = `${SESSIONS_TAB}!A${foundRowIndex === -1 ? rows.length + 1 : foundRowIndex}:Z${
+    foundRowIndex === -1 ? rows.length + 1 : foundRowIndex
+  }`;
+
+  // Use sheets.values.update via your sheets helper: easiest is rely on existing pattern
+  // We reuse the client's values.update directly to keep consistent
+  await sheets.spreadsheets.values.update({
+    spreadsheetId: SHEET_ID,
+    range: writeRange,
+    valueInputOption: "RAW",
+    requestBody: { values: [outRow] },
+  });
 }
 
+// --------------------
+// WhatsApp-style engine (existing)
+// --------------------
 async function resetToCollecting(user_id, lang) {
   await upsertSession({
     user_id,
@@ -223,104 +225,84 @@ async function resetToCollecting(user_id, lang) {
   });
 }
 
-// --------------------
-// Main WhatsApp-style flow (kept)
-// --------------------
 export async function handleMessage({ from, text }) {
-  const user_id = String(from || "").trim();
+  const user_id = String(from || "");
   const msg = String(text || "").trim();
+  const lower = msg.toLowerCase();
 
   let session = await loadSession(user_id);
-
-  // Create new session
   if (!session) {
-    session = {
+    await upsertSession({
       user_id,
       state: "CONSENT",
       story_text: "",
       story_id: "",
       consent: false,
-      lang: "en",
+      lang: "",
       msg_count: 0,
-    };
-    await upsertSession(session);
+    });
+    return getText("en", "consent");
   }
 
   const lang = session.lang || "en";
-  const upper = msg.toUpperCase();
   const yn = normalizeYesNo(msg);
 
-  // STOP / START / RESET / HELP
-  if (upper === "STOP") {
-    await upsertSession({
-      ...session,
-      state: "STOPPED",
-      consent: false,
-      msg_count: 0,
-    });
-    return getText(lang, "stopped");
-  }
+  if (session.state === "STOPPED") return "";
 
-  if (upper === "START") {
-    await upsertSession({
-      ...session,
-      state: "CONSENT",
-      consent: false,
-      msg_count: 0,
-    });
-    return getText(lang, "consent");
-  }
+  // Consent flow
+  if (!session.consent || session.state === "CONSENT") {
+    if (lower === "ok") {
+      const hasLangColumn = session.headers
+        ? headerIndex(session.headers, "lang") !== -1
+        : false;
 
-  if (upper === "RESET") {
-    await resetToCollecting(user_id, lang);
-    return getText(lang, "resetDone");
-  }
+      const nextState = hasLangColumn && !session.lang ? "ASK_LANG" : "COLLECTING";
 
-  if (upper === "HELP") {
-    return getText(lang, "help");
-  }
-
-  // STOPPED
-  if (session.state === "STOPPED") {
-    return getText(lang, "stopped");
-  }
-
-  // CONSENT
-  if (session.state === "CONSENT") {
-    if (upper === "OK") {
       await upsertSession({
-        ...session,
-        state: "CHOOSE_LANG",
+        user_id,
+        state: nextState,
+        story_text: "",
+        story_id: "",
         consent: true,
+        lang: session.lang || "",
+        msg_count: 0,
       });
-      return getText(lang, "chooseLang");
+
+      if (nextState === "ASK_LANG") return getText("en", "chooseLang");
+      return getText(lang, "startCollecting");
     }
+
     return getText(lang, "consent");
   }
 
-  // CHOOSE_LANG
-  if (session.state === "CHOOSE_LANG") {
+  // ASK_LANG
+  if (session.state === "ASK_LANG") {
     const chosen = normalizeLangChoice(msg);
-    if (!chosen) return getText(lang, "chooseLang");
+    if (!chosen) return getText("en", "chooseLang");
 
     await upsertSession({
-      ...session,
-      lang: chosen,
+      user_id,
       state: "COLLECTING",
       story_text: "",
+      story_id: "",
+      consent: true,
+      lang: chosen,
       msg_count: 0,
     });
 
-    return getText(chosen, "langSet") + "\n\n" + getText(chosen, "startCollecting");
+    return `${getText(chosen, "langSet")}\n${getText(chosen, "startCollecting")}`;
+  }
+
+  // RESET
+  if (lower === "reset") {
+    await resetToCollecting(user_id, session.lang || "en");
+    return getText(lang, "resetDone");
   }
 
   // COLLECTING
   if (session.state === "COLLECTING") {
-    if (!msg) return getText(lang, "startCollecting");
-
-    if (isDone(msg)) {
+    if (lower === "done") {
       let aiBlock = "";
-
       const aiResult = await generateReflectionAndQuestion({
         lang: session.lang || "en",
         story_text: session.story_text,
@@ -347,7 +329,6 @@ export async function handleMessage({ from, text }) {
       );
     }
 
-    // Treat EVERYTHING as story text while collecting (including YES/NO)
     const updatedText = session.story_text ? session.story_text + "\n" + msg : msg;
 
     await upsertSession({
@@ -366,22 +347,13 @@ export async function handleMessage({ from, text }) {
   // REVIEW
   if (session.state === "REVIEW") {
     if (yn === "YES") {
-      console.log("[SAVE BRANCH] Entered YES path", {
-        user_id,
-        state: session.state,
-        storyLength: (session.story_text || "").length,
-      });
-
       const saved = await saveStory({
         user_id,
         story_text: session.story_text,
         publish: true,
       });
 
-      console.log("[SAVE BRANCH] saveStory returned:", saved);
-
       await logEvent({ user_id, event: "story_saved", details: saved.id });
-
       await resetToCollecting(user_id, session.lang || "en");
       return getText(lang, "published", { user_id });
     }
@@ -400,7 +372,7 @@ export async function handleMessage({ from, text }) {
 }
 
 // --------------------
-// ✅ NEW: Web App DST Builder flow
+// ✅ Web App DST Builder flow
 // --------------------
 function appStartPrompt(lang) {
   if (lang === "hi")
@@ -421,6 +393,32 @@ function appSavedMsg(lang, user_id) {
   if (lang === "hi") return `बहुत बढ़िया। सेव हो गया। आपकी कहानियाँ: ${url}`;
   if (lang === "gu") return `સરસ. સેવ થઈ ગયું. તમારી વાર્તાઓ: ${url}`;
   return `Saved. Your stories: ${url}`;
+}
+
+function cleanTranscriptBasic(text) {
+  const lines = String(text || "")
+    .split("\n")
+    .map(l => l.trim())
+    .filter(Boolean);
+
+  const out = [];
+  const seen = new Set();
+
+  for (const line of lines) {
+    const key = line.toLowerCase();
+
+    // drop consecutive duplicate
+    const prev = out[out.length - 1];
+    if (prev && prev.toLowerCase() === key) continue;
+
+    // drop exact repeats
+    if (seen.has(key)) continue;
+
+    out.push(line);
+    seen.add(key);
+  }
+
+  return out.join("\n");
 }
 
 export async function handleAppTurn({ user_id, text, lang }) {
@@ -470,17 +468,27 @@ export async function handleAppTurn({ user_id, text, lang }) {
     }
 
     if (isDone(incoming)) {
-      const draft = makeDraft(session.story_text || "");
+      // ✅ NEW: polish the story NOW, before review
+      const cleaned = cleanTranscriptBasic(session.story_text || "");
+      const raw = session.story_text || "";
+      const polished = await polishStory({ lang: L, story_text: raw });
 
+      const finalBody = polished?.body?.trim() ? polished.body.trim() : raw.trim();
+      const draft = polished?.body?.trim()
+        ? { title: polished.title || "A Memory", body: finalBody }
+        : makeDraft(finalBody);
+
+      // ✅ overwrite session.story_text so SAVE writes cleaned story
       await upsertSession({
         ...session,
         state: "APP_REVIEW",
+        story_text: finalBody,
         msg_count: 0,
       });
 
       return {
         screen: "REVIEW",
-        story_so_far: session.story_text || "",
+        story_so_far: finalBody,
         draft,
         agent_prompt: appSaveAsk(L),
       };
@@ -490,20 +498,25 @@ export async function handleAppTurn({ user_id, text, lang }) {
       ? session.story_text + "\n" + incoming
       : incoming;
 
+    // Keep your existing AI probing for BUILD
+    let agent_prompt = appStartPrompt(L);
+    try {
+      const ai = await generateReflectionAndQuestion({
+        lang: L,
+        story_text: updatedText,
+      });
+      if (ai?.combined) agent_prompt = ai.combined;
+      else agent_prompt = getText(L, "added");
+    } catch {
+      agent_prompt = getText(L, "added");
+    }
+
     await upsertSession({
       ...session,
       state: "APP_BUILD",
       story_text: updatedText,
       msg_count: (session.msg_count || 0) + 1,
     });
-
-    // Agent prompt (AI if enabled inside ai.js, otherwise safe fallback)
-    let agent_prompt = getText(L, "added");
-    const aiResult = await generateReflectionAndQuestion({
-      lang: L,
-      story_text: updatedText,
-    });
-    if (aiResult?.combined) agent_prompt = aiResult.combined;
 
     return {
       screen: "BUILD",
@@ -519,7 +532,7 @@ export async function handleAppTurn({ user_id, text, lang }) {
     if (yn === "YES") {
       const saved = await saveStory({
         user_id,
-        story_text: session.story_text || "",
+        story_text: session.story_text || "", // ✅ already cleaned
         publish: true,
       });
 

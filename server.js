@@ -1,3 +1,4 @@
+// server.js
 import "dotenv/config";
 import express from "express";
 import path from "path";
@@ -7,6 +8,7 @@ import { getStoriesByUser } from "./src/storyStore.js";
 const app = express();
 
 app.use(express.static("public"));
+app.use("/cards", express.static("cards"));
 app.use(express.json());
 
 function escapeHtml(s) {
@@ -30,7 +32,7 @@ function formatDate(iso) {
 // Health
 app.get("/health", (req, res) => res.status(200).send("OK"));
 
-// App UI (later we will replace index.html with DST UI)
+// Web App UI
 app.get("/app", (req, res) => {
   res.sendFile(path.resolve("public", "index.html"));
 });
@@ -38,22 +40,21 @@ app.get("/app", (req, res) => {
 // ✅ DST Builder API endpoint
 app.post("/api/turn", async (req, res) => {
   try {
-    const { user_id, text, lang } = req.body || {};
-    if (!user_id) return res.status(400).json({ error: "Missing user_id" });
+    const { user_id, text, lang, seed_prompt } = req.body || {};
 
-    if (typeof convo.handleAppTurn !== "function") {
-      return res.status(500).json({
-        error:
-          "handleAppTurn is missing. Ensure src/conversation.js exports handleAppTurn.",
-      });
+    if (!user_id) {
+      return res.status(400).json({ error: "Missing user_id" });
     }
 
     const out = await convo.handleAppTurn({
       user_id: String(user_id),
       text: String(text || ""),
       lang: lang ? String(lang) : undefined,
+      seed_prompt:
+        seed_prompt !== undefined ? String(seed_prompt) : undefined,
     });
 
+    // IMPORTANT: return full object
     return res.json(out);
   } catch (err) {
     console.error("Error in /api/turn:", err);
@@ -131,49 +132,6 @@ app.get("/u/:userId", async (req, res) => {
   } catch (err) {
     console.error("Error in /u/:userId:", err);
     res.status(500).send("Server error");
-  }
-});
-
-// Webhook verification (keep)
-app.get("/webhook", (req, res) => {
-  const mode = req.query["hub.mode"];
-  const token = req.query["hub.verify_token"];
-  const challenge = req.query["hub.challenge"];
-
-  if (mode === "subscribe" && token === process.env.VERIFY_TOKEN) {
-    console.log("Webhook verified successfully");
-    return res.status(200).send(challenge);
-  }
-
-  console.log("Webhook verification failed");
-  return res.sendStatus(403);
-});
-
-app.post("/webhook", (req, res) => {
-  console.log("==== INCOMING WEBHOOK ====");
-  console.log(JSON.stringify(req.body, null, 2));
-  console.log("==========================");
-  res.sendStatus(200);
-});
-
-// Debug simulate route (keep)
-app.post("/simulate", async (req, res) => {
-  try {
-    const { from, text } = req.body || {};
-    if (!from) return res.status(400).json({ error: "Missing from" });
-
-    if (typeof convo.handleMessage !== "function") {
-      return res.status(500).json({
-        error:
-          "handleMessage is missing. Ensure src/conversation.js exports handleMessage.",
-      });
-    }
-
-    const reply = await convo.handleMessage({ from, text });
-    return res.json({ to: from, reply });
-  } catch (err) {
-    console.error("Error in /simulate:", err);
-    return res.status(500).json({ error: "Server error" });
   }
 });
 

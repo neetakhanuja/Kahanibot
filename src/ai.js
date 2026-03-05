@@ -1,5 +1,5 @@
 // src/ai.js
-// Minimal OpenAI wrapper for Kahanibot (reflection + question) + story polish.
+// Minimal OpenAI wrapper for Kahanibot (reflection + question) + light story polish.
 
 const AI_ENABLED = String(process.env.AI_ENABLED || "").toLowerCase() === "true";
 const AI_MODEL = process.env.AI_MODEL || "gpt-4.1-mini";
@@ -26,22 +26,70 @@ function hardLimitLines(text, maxLines) {
   return lines.slice(0, maxLines).join("\n");
 }
 
+function pickScaffoldQuestion(lang) {
+  if (lang === "hi") {
+    const qs = [
+      "उस समय आपके साथ कौन था?",
+      "यह कहाँ हुआ था?",
+      "उस पल आपको सबसे ज़्यादा क्या याद है?",
+      "फिर आपने क्या किया?",
+      "अंत में क्या हुआ?",
+    ];
+    return qs[Math.floor(Math.random() * qs.length)];
+  }
+
+  if (lang === "gu") {
+    const qs = [
+      "તે વખતે તમારી સાથે કોણ હતું?",
+      "આ ક્યા બન્યું હતું?",
+      "આ પળમાંથી તમને સૌથી વધુ શું યાદ છે?",
+      "પછી તમે શું કર્યું?",
+      "અંતમાં શું થયું?",
+    ];
+    return qs[Math.floor(Math.random() * qs.length)];
+  }
+
+  const qs = [
+    "Who was with you then?",
+    "Where did this happen?",
+    "What do you remember most from that moment?",
+    "What did you do next?",
+    "How did it end?",
+  ];
+  return qs[Math.floor(Math.random() * qs.length)];
+}
+
+function isTooGenericQuestion(lang, q) {
+  const t = String(q || "").trim().toLowerCase();
+
+  // English
+  if (lang === "en") {
+    if (t === "what happened next?" || t === "and what happened next?") return true;
+    if (t === "what happened next") return true;
+    return false;
+  }
+
+  // Hindi
+  if (lang === "hi") {
+    if (t === "और क्या हुआ?" || t === "और फिर क्या हुआ?" || t === "और क्या याद आता है?") return true;
+    return false;
+  }
+
+  // Gujarati
+  if (lang === "gu") {
+    if (t === "આ પછી શું થયું?" || t === "પછી શું થયું?" || t === "હવે પછી શું થયું?") return true;
+    return false;
+  }
+
+  // default
+  return t === "what happened next?" || t === "what happened next";
+}
+
 async function callOpenAI({ system, user, temperature = 0.5 }) {
-  console.log("[AI] callOpenAI entered");
-
-  if (!AI_ENABLED) {
-    console.log("[AI] AI disabled");
-    return null;
-  }
-
-  if (!OPENAI_API_KEY) {
-    console.log("[AI] Missing OPENAI_API_KEY");
-    return null;
-  }
+  if (!AI_ENABLED) return null;
+  if (!OPENAI_API_KEY) return null;
 
   try {
-    console.log("[AI] Sending request to OpenAI...");
-
     const res = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -58,62 +106,53 @@ async function callOpenAI({ system, user, temperature = 0.5 }) {
       }),
     });
 
-    console.log("[AI] Response status:", res.status);
-
-    if (!res.ok) {
-      const errText = await res.text();
-      console.log("[AI] OpenAI HTTP error:", errText);
-      return null;
-    }
+    if (!res.ok) return null;
 
     const data = await res.json();
     const text = data?.choices?.[0]?.message?.content;
+    if (!text) return null;
 
-    if (!text) {
-      console.log("[AI] No content returned:", JSON.stringify(data));
-      return null;
-    }
-
-    console.log("[AI] OpenAI returned text");
     return String(text).trim();
-  } catch (err) {
-    console.log("[AI] Exception:", err?.message || err);
+  } catch {
     return null;
   }
 }
 
 export async function generateReflectionAndQuestion({ lang, story_text }) {
-  console.log("[AI] generateReflectionAndQuestion CALLED", {
-    lang,
-    storyChars: String(story_text || "").length,
-  });
-
   try {
     const system =
       `You are a warm and simple storytelling companion for older adults.\n` +
-      `Write in ${langLabel(lang)}.\n` +
-      `Tone:\n` +
+      `Write in ${langLabel(lang)}.\n\n` +
+      `Input structure:\n` +
+      `The input may contain these sections:\n` +
+      `Theme: a story topic or prompt.\n` +
+      `Context so far: earlier parts of the story.\n` +
+      `Latest message: the newest part of the story from the user.\n\n` +
+      `Your task:\n` +
+      `- Your acknowledgment MUST respond to the Latest message.\n` +
+      `- If a Theme exists, your question MUST connect to the Theme.\n` +
+      `- Ask one simple open question that moves the story forward.\n\n` +
+      `Tone rules:\n` +
       `- Warm but simple.\n` +
       `- Do not exaggerate emotions.\n` +
       `- Do not interpret feelings beyond what is said.\n` +
-      `- Use clear and plain language.\n` +
-      `Rules:\n` +
-      `- Do not give advice.\n` +
-      `- Do not assume anything not stated.\n` +
-      `- Keep it short.\n` +
+      `- Use clear plain language.\n\n` +
+      `Conversation rules:\n` +
+      `- No advice.\n` +
+      `- No moral lessons.\n` +
+      `- No assumptions.\n` +
+      `- Ask only one open question.\n` +
+      `- Avoid generic questions like "What happened next?" unless truly needed.\n` +
+      `- Keep responses short.\n\n` +
       `Output EXACTLY 2 lines:\n` +
-      `Line 1: one simple acknowledgment of what was shared.\n` +
-      `Line 2: one gentle, open question.\n` +
-      `No extra lines. No explanations.`;
+      `Line 1: one short acknowledgment.\n` +
+      `Line 2: one gentle question that connects to the story and the Theme.\n` +
+      `No extra text.`;
 
-    const user = `Story:\n${story_text}\n\nReturn exactly 2 sentences.`;
+    const user = `Story:\n${story_text}\n\nReturn exactly 2 lines.`;
 
     const out = await callOpenAI({ system, user, temperature: 0.5 });
-
-    if (!out) {
-      console.log("[AI] OpenAI returned null");
-      return null;
-    }
+    if (!out) return null;
 
     const cleaned = hardLimitLines(out, 2);
     const lines = cleaned
@@ -121,10 +160,15 @@ export async function generateReflectionAndQuestion({ lang, story_text }) {
       .map((l) => l.trim())
       .filter(Boolean);
 
+    // If we got 2 lines, enforce anti-generic question fallback
     if (lines.length >= 2) {
-      const reflection = lines[0];
-      const question = lines[1];
-      console.log("[AI] SUCCESS (2 lines)");
+      let reflection = lines[0];
+      let question = lines[1];
+
+      if (isTooGenericQuestion(lang || "en", question)) {
+        question = pickScaffoldQuestion(lang || "en");
+      }
+
       return {
         reflection,
         question,
@@ -132,78 +176,48 @@ export async function generateReflectionAndQuestion({ lang, story_text }) {
       };
     }
 
-    // If model returned one line, split by sentence instead
-    console.log("[AI] Single line returned, attempting sentence split");
+    // If we got only one line, add a scaffold question
     const one = String(out).trim();
-    const parts = one.split(/(?<=[.?!।])\s+/).filter(Boolean);
-    if (parts.length >= 2) {
-      const reflection = parts[0].trim();
-      const question = parts.slice(1).join(" ").trim();
-      return {
-        reflection,
-        question,
-        combined: `${reflection}\n${question}`,
-      };
-    }
-
-    // Fallback
+    const q = pickScaffoldQuestion(lang || "en");
     return {
       reflection: one,
-      question:
-        lang === "hi"
-          ? "और क्या याद आता है?"
-          : lang === "gu"
-          ? "આ પછી શું થયું?"
-          : "What happened next?",
-      combined:
-        lang === "hi"
-          ? `${one}\nऔर क्या याद आता है?`
-          : lang === "gu"
-          ? `${one}\nઆ પછી શું થયું?`
-          : `${one}\nWhat happened next?`,
+      question: q,
+      combined: `${one}\n${q}`,
     };
-  } catch (err) {
-    console.log("[AI] generateReflectionAndQuestion exception:", err?.message || err);
+  } catch {
     return null;
   }
 }
 
-/**
- * NEW: Polish/clean the final story for REVIEW + saving.
- * Returns: { title, body } OR null if AI disabled/fails.
- */
+/*
+  Conservative story polish.
+  Very light cleaning. No expansion. No interpretation.
+*/
 export async function polishStory({ lang, story_text }) {
-  console.log("[AI] polishStory CALLED", {
-    lang,
-    storyChars: String(story_text || "").length,
-  });
-
   const raw = String(story_text || "").trim();
   if (!raw) return null;
 
   const system =
-    `You edit spoken transcripts into a clean short story draft for older adults.\n` +
-    `Write in ${langLabel(lang)}.\n` +
-    `Goals:\n` +
-    `- Keep the person's original wording and meaning.\n` +
-    `- Remove obvious duplicate lines and repeated fragments.\n` +
-    `- Fix small speech-to-text mistakes only when very confident.\n` +
-    `- Do not add new events.\n` +
-    `- Do not add moral lessons or advice.\n` +
-    `Format:\n` +
-    `Return ONLY valid JSON with keys: "title" and "body".\n` +
-    `Title: short (max 8 words).\n` +
-    `Body: 70-140 words if possible, in 1-2 short paragraphs.\n`;
+    `You lightly clean spoken transcripts into a readable short story.\n` +
+    `Write in ${langLabel(lang)}.\n\n` +
+    `Strict rules:\n` +
+    `- Keep original wording as much as possible.\n` +
+    `- Do NOT add new details.\n` +
+    `- Do NOT exaggerate emotions.\n` +
+    `- Do NOT add moral lessons.\n` +
+    `- Do NOT significantly increase length.\n` +
+    `- Keep sentence structure close to original.\n` +
+    `- Remove clear duplicate lines or repeated fragments.\n` +
+    `- Fix small speech errors only if obvious.\n\n` +
+    `Return ONLY valid JSON with keys "title" and "body".\n` +
+    `Title: short (max 6 words).\n` +
+    `Body: similar length to transcript.\n`;
 
-  const user =
-    `Transcript (may contain repeats):\n` +
-    `${raw}\n\n` +
-    `Return JSON only.`;
+  const user = `Transcript:\n${raw}\n\nReturn JSON only.`;
 
-  const out = await callOpenAI({ system, user, temperature: 0.3 });
+  const out = await callOpenAI({ system, user, temperature: 0.2 });
   if (!out) return null;
 
-  // Try parse JSON
   try {
     const start = out.indexOf("{");
     const end = out.lastIndexOf("}");
@@ -212,15 +226,13 @@ export async function polishStory({ lang, story_text }) {
 
     const title = String(obj.title || "").trim();
     const body = String(obj.body || "").trim();
-
     if (!body) return null;
 
     return {
-      title: title || "A Memory",
+      title: title || (lang === "hi" ? "एक कहानी" : lang === "gu" ? "એક વાર્તા" : "A Story"),
       body,
     };
-  } catch (e) {
-    console.log("[AI] polishStory JSON parse failed:", e?.message || e);
+  } catch {
     return null;
   }
 }

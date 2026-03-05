@@ -3,3 +3,6 @@ node_modules
 kahani.sqlite
 secrets/
 .DS_Store
+.env.save
+test*.js
+src/memoryStore copy.js

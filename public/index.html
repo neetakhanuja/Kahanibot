@@ -132,7 +132,7 @@
       cursor:not-allowed;
     }
 
-    /* BUILDER v2 layout (A) */
+    /* BUILDER v2 layout */
     .builder{
       flex:1;
       overflow:hidden;
@@ -146,7 +146,7 @@
       flex-direction:column;
       justify-content:center;
       align-items:center;
-      gap:16px;
+      gap:12px;
       padding:8px 8px 0;
       overflow:hidden;
     }
@@ -163,6 +163,24 @@
       box-shadow: 0 1px 2px rgba(0,0,0,0.04);
       white-space:pre-wrap;
     }
+
+    /* Theme pill under prompt */
+    #themePill{
+      display:none;
+      max-width:720px;
+      width:100%;
+      text-align:center;
+      font-size:14px;
+      color:#333;
+      background:#fff;
+      border:1px solid var(--border);
+      border-radius:999px;
+      padding:10px 12px;
+      white-space:nowrap;
+      overflow:hidden;
+      text-overflow:ellipsis;
+    }
+
     .controlsRow{
       width:100%;
       max-width:720px;
@@ -328,11 +346,12 @@
         </div>
       </div>
 
-      <!-- BUILDER (v2) -->
+      <!-- BUILDER -->
       <div class="screen" id="screenBuilder">
         <div class="builder">
           <div class="promptStage">
             <div id="promptBig">…</div>
+            <div id="themePill"></div>
 
             <div class="controlsRow">
               <button class="secondary doneBtn" id="doneBtn" onclick="endStory()">Done</button>
@@ -414,8 +433,9 @@
       lang: "hi",
       busy: false,
       lastStoryText: "",
+      seedPrompt: "",
       cards: [
-        // Simple starter prompts (we will replace with your MANAN deck content next)
+        // Simple starter prompts (replace later with full MANAN deck)
         { hi:"जब मैं छोटा/छोटी थी…", gu:"જ્યારે હું નાનો/નાની હતો…", en:"When I was younger…" },
         { hi:"मेरी सबसे प्यारी याद…", gu:"મારી સૌથી ગમતી યાદ…", en:"A memory I love…" },
         { hi:"एक ऐसा दिन जो मैं नहीं भूलता/भूलती…", gu:"એક એવો દિવસ જે હું ભૂલતો/ભૂલતી નથી…", en:"A day I never forget…" },
@@ -440,6 +460,8 @@
       lang: document.getElementById("lang"),
 
       promptBig: document.getElementById("promptBig"),
+      themePill: document.getElementById("themePill"),
+
       storyToggle: document.getElementById("storyToggle"),
       storyPanel: document.getElementById("storyPanel"),
       storyBox: document.getElementById("storyBox"),
@@ -534,28 +556,53 @@
       els.storyBox.scrollTop = els.storyBox.scrollHeight;
     }
 
+    function setThemePill(seed){
+      const s = String(seed || "").trim();
+      state.seedPrompt = s;
+      if (!s){
+        els.themePill.style.display = "none";
+        els.themePill.textContent = "";
+        return;
+      }
+      els.themePill.style.display = "block";
+      els.themePill.textContent = "Prompt: " + s;
+    }
+
     function langToSpeechLocale(lang){
       if (lang === "hi") return "hi-IN";
       if (lang === "gu") return "gu-IN";
       return "en-US";
     }
 
-    async function apiTurn(text){
-      const res = await fetch("/api/turn", {
-        method:"POST",
-        headers:{ "Content-Type":"application/json" },
-        body: JSON.stringify({
-          user_id: state.userId,
-          text: String(text || ""),
-          lang: state.lang
-        })
-      });
-      const data = await res.json();
-      if (!data || data.error) throw new Error(data?.error || "Server error");
-      return data;
-    }
+    async function apiTurn(text, seedPrompt){
+  const body = {
+    user_id: state.userId,
+    text: String(text || ""),
+    lang: state.lang
+  };
+
+  // Always send the active theme if we have one
+  const active = (seedPrompt !== undefined) ? seedPrompt : state.seedPrompt;
+  if (active !== undefined && String(active).trim() !== "") {
+    body.seed_prompt = String(active);
+  }
+
+  const res = await fetch("/api/turn", {
+    method:"POST",
+    headers:{ "Content-Type":"application/json" },
+    body: JSON.stringify(body)
+  });
+
+  const data = await res.json();
+  if (!data || data.error) throw new Error(data?.error || "Server error");
+  return data;
+}
 
     function renderFromServer(data){
+      if (data.seed_prompt !== undefined) {
+        setThemePill(data.seed_prompt);
+      }
+
       if (data.story_so_far !== undefined) {
         setStorySoFar(data.story_so_far);
       }
@@ -615,20 +662,24 @@
     }
 
     async function startNewStory(){
-      // Soft reset: if there is a story in progress, finalize + discard to reset backend state
       const current = (state.lastStoryText || "").trim();
 
       showScreen("screenBuilder");
       els.promptBig.textContent = "…";
       setStorySoFar("");
+      setThemePill("");
 
       try{
         setBusy(true);
 
+        // Reset story on backend if needed
         if (current.length > 0) {
           await apiTurn("DONE");
           await apiTurn("NO");
         }
+
+        // Clear theme on backend
+        await apiTurn("", "");
 
         const data = await apiTurn("");
         renderFromServer(data);
@@ -681,16 +732,31 @@
       }
     }
 
-    // Cards (starter prompts)
+    // Cards (theme only)
     async function pickCard(){
-      const pack = state.cards;
-      const c = pack[Math.floor(Math.random() * pack.length)];
-      const prompt = (c && (c[state.lang] || c.en)) || "";
-      if (!prompt) return;
+  const pack = state.cards;
+  const c = pack[Math.floor(Math.random() * pack.length)];
+  const prompt = (c && (c[state.lang] || c.en)) || "";
+  if (!prompt) return;
 
-      // Put the card prompt into the story (as a starter line), and let AI respond.
-      await sendChunk(prompt);
-    }
+  try{
+    setBusy(true);
+
+    // store the MANAN prompt locally
+    state.seedPrompt = prompt;
+
+    // show it in the UI
+    els.themePill.textContent = "Prompt: " + prompt;
+
+    // guide the user instead of calling the server
+    els.promptBig.textContent = "Share a story related to this prompt.";
+
+  } catch(e){
+    els.promptBig.textContent = "Could not set prompt. Please try again.";
+  } finally {
+    setBusy(false);
+  }
+}
 
     // Speech to text
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -700,7 +766,7 @@
     if (SpeechRecognition){
       recognition = new SpeechRecognition();
       recognition.interimResults = false;
-      recognition.continuous = true;   // keep listening
+      recognition.continuous = true;
       recognition.maxAlternatives = 1;
 
       recognition.onstart = ()=>{

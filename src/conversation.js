@@ -1,4 +1,8 @@
 // src/conversation.js
+
+import fs from "fs";
+import path from "path";
+
 import { getSheetsClient, readRange } from "./sheets.js";
 import { saveStory } from "./storyStore.js";
 import { makeDraft, normalizeYesNo } from "./storyEngine.js";
@@ -36,7 +40,7 @@ function getText(lang, key, vars = {}) {
         "Choose your language (reply with 1/2/3):\n1) Hindi\n2) Gujarati\n3) English",
 
       startCollecting:
-        "Okay. Please share your memory. Speak or type freely. When you are finished, type DONE.",
+        "Okay. Please share your story. Speak or type freely. When you are finished, type DONE.",
       added: "Thank you. Go on. (Type DONE when finished.)",
 
       draftIntro: "Here is your draft:",
@@ -58,7 +62,7 @@ function getText(lang, key, vars = {}) {
       chooseLang: "भाषा चुनें (1/2/3):\n1) हिंदी\n2) गुजराती\n3) English",
 
       startCollecting:
-        "ठीक है। अपनी याद साझा करें। आप बोल सकते हैं या लिख सकते हैं। जब पूरा हो जाए तो DONE लिखें।",
+        "ठीक है। अपनी कहानी साझा करें। आप बोल सकते हैं या लिख सकते हैं। जब पूरा हो जाए तो DONE लिखें।",
       added: "धन्यवाद। आगे बताइए। (पूरा होने पर DONE लिखें।)",
 
       draftIntro: "यह आपका ड्राफ्ट है:",
@@ -80,7 +84,7 @@ function getText(lang, key, vars = {}) {
       chooseLang: "ભાષા પસંદ કરો (1/2/3):\n1) Hindi\n2) Gujarati\n3) English",
 
       startCollecting:
-        "બરાબર. તમારી યાદ શેર કરો. તમે બોલી શકો અથવા લખી શકો. પૂરું થાય ત્યારે DONE લખો.",
+        "બરાબર. તમારી વાર્તા શેર કરો. તમે બોલી શકો અથવા લખી શકો. પૂરું થાય ત્યારે DONE લખો.",
       added: "આભાર. આગળ કહો. (પૂરું થાય ત્યારે DONE લખો.)",
 
       draftIntro: "આ રહ્યો તમારો ડ્રાફ્ટ:",
@@ -113,6 +117,33 @@ function isDone(msg) {
 }
 
 // --------------------
+// MANAN deck (cards/manan_cards.json)
+// --------------------
+let MANAN_CACHE = null;
+
+function loadMananCards() {
+  if (MANAN_CACHE) return MANAN_CACHE;
+
+  const filePath = path.join(process.cwd(), "cards", "manan_cards.json");
+  const raw = fs.readFileSync(filePath, "utf8");
+  const arr = JSON.parse(raw);
+
+  MANAN_CACHE = (arr || [])
+    .map((c) => (c && (c.en || c.hi || c.gu) ? c : null))
+    .filter(Boolean);
+
+  return MANAN_CACHE;
+}
+
+function randomTopic(lang = "en") {
+  const cards = loadMananCards();
+  if (!cards.length) return "A turning point";
+
+  const c = cards[Math.floor(Math.random() * cards.length)];
+  return String(c?.[lang] || c?.en || c?.hi || c?.gu || "A turning point").trim();
+}
+
+// --------------------
 // Sheets session store
 // --------------------
 async function loadSession(user_id) {
@@ -132,13 +163,15 @@ async function loadSession(user_id) {
   const idxConsent = headerIndex(headers, "consent");
   const idxLang = headerIndex(headers, "lang");
   const idxMsgCount = headerIndex(headers, "msg_count");
+  const idxSeed = headerIndex(headers, "seed_prompt");
+  const idxLastPrompt = headerIndex(headers, "last_agent_prompt");
 
   for (let r = 1; r < rows.length; r++) {
     const row = rows[r] || [];
     if (String(row[idxUser] || "") === String(user_id)) {
       return {
         headers,
-        rowIndex: r + 1, // 1-based, incl header row
+        rowIndex: r + 1,
         user_id,
         state: row[idxState] || "",
         story_text: row[idxStory] || "",
@@ -146,6 +179,8 @@ async function loadSession(user_id) {
         consent: String(row[idxConsent] || "").toLowerCase() === "true",
         lang: row[idxLang] || "",
         msg_count: Number(row[idxMsgCount] || 0),
+        seed_prompt: idxSeed === -1 ? "" : row[idxSeed] || "",
+        last_agent_prompt: idxLastPrompt === -1 ? "" : row[idxLastPrompt] || "",
       };
     }
   }
@@ -175,7 +210,11 @@ async function upsertSession(session) {
   const idxConsent = col("consent");
   const idxLang = col("lang");
   const idxMsgCount = col("msg_count");
+
+  const idxSeed = headerIndex(headers, "seed_prompt");
+  const idxLastPrompt = headerIndex(headers, "last_agent_prompt");
   const idxUpdated = headerIndex(headers, "updated_at");
+  const idxCreated = headerIndex(headers, "created_at");
 
   let foundRowIndex = -1;
   for (let r = 1; r < rows.length; r++) {
@@ -186,7 +225,11 @@ async function upsertSession(session) {
     }
   }
 
+  const isNew = foundRowIndex === -1;
+  const targetRowIndex = isNew ? rows.length + 1 : foundRowIndex;
+
   const outRow = new Array(headers.length).fill("");
+
   outRow[idxUser] = session.user_id;
   outRow[idxState] = session.state || "";
   outRow[idxStory] = session.story_text || "";
@@ -194,14 +237,15 @@ async function upsertSession(session) {
   outRow[idxConsent] = String(!!session.consent);
   outRow[idxLang] = session.lang || "";
   outRow[idxMsgCount] = String(session.msg_count || 0);
+
+  if (idxSeed !== -1) outRow[idxSeed] = session.seed_prompt || "";
+  if (idxLastPrompt !== -1) outRow[idxLastPrompt] = session.last_agent_prompt || "";
+
   if (idxUpdated !== -1) outRow[idxUpdated] = isoNow();
+  if (idxCreated !== -1 && isNew) outRow[idxCreated] = isoNow();
 
-  const writeRange = `${SESSIONS_TAB}!A${foundRowIndex === -1 ? rows.length + 1 : foundRowIndex}:Z${
-    foundRowIndex === -1 ? rows.length + 1 : foundRowIndex
-  }`;
+  const writeRange = `${SESSIONS_TAB}!A${targetRowIndex}:Z${targetRowIndex}`;
 
-  // Use sheets.values.update via your sheets helper: easiest is rely on existing pattern
-  // We reuse the client's values.update directly to keep consistent
   await sheets.spreadsheets.values.update({
     spreadsheetId: SHEET_ID,
     range: writeRange,
@@ -222,6 +266,8 @@ async function resetToCollecting(user_id, lang) {
     consent: true,
     lang: lang || "en",
     msg_count: 0,
+    seed_prompt: "",
+    last_agent_prompt: "",
   });
 }
 
@@ -240,6 +286,8 @@ export async function handleMessage({ from, text }) {
       consent: false,
       lang: "",
       msg_count: 0,
+      seed_prompt: "",
+      last_agent_prompt: "",
     });
     return getText("en", "consent");
   }
@@ -266,6 +314,8 @@ export async function handleMessage({ from, text }) {
         consent: true,
         lang: session.lang || "",
         msg_count: 0,
+        seed_prompt: "",
+        last_agent_prompt: "",
       });
 
       if (nextState === "ASK_LANG") return getText("en", "chooseLang");
@@ -288,6 +338,8 @@ export async function handleMessage({ from, text }) {
       consent: true,
       lang: chosen,
       msg_count: 0,
+      seed_prompt: "",
+      last_agent_prompt: "",
     });
 
     return `${getText(chosen, "langSet")}\n${getText(chosen, "startCollecting")}`;
@@ -319,6 +371,8 @@ export async function handleMessage({ from, text }) {
         consent: true,
         lang: session.lang || "",
         msg_count: 0,
+        seed_prompt: "",
+        last_agent_prompt: "",
       });
 
       return (
@@ -339,6 +393,8 @@ export async function handleMessage({ from, text }) {
       consent: true,
       lang: session.lang || "",
       msg_count: (session.msg_count || 0) + 1,
+      seed_prompt: "",
+      last_agent_prompt: "",
     });
 
     return getText(lang, "added");
@@ -372,18 +428,46 @@ export async function handleMessage({ from, text }) {
 }
 
 // --------------------
-// ✅ Web App DST Builder flow
+// ✅ Web App DST Builder flow (facilitator-style)
 // --------------------
-function appStartPrompt(lang) {
+function appModePrompt(lang) {
+  if (lang === "hi") {
+    return (
+      "नमस्ते। क्या आप अपनी कहानी साझा करना चाहेंगे या मैं आपको एक विषय दूँ?\n\n" +
+      "1 — मैं अपनी कहानी साझा करूँगा/करूँगी\n" +
+      "2 — मुझे एक विषय दें"
+    );
+  }
+  if (lang === "gu") {
+    return (
+      "નમસ્તે. શું તમે તમારી વાર્તા શેર કરવા માંગો છો કે હું તમને એક વિષય આપું?\n\n" +
+      "1 — હું મારી વાર્તા કહું\n" +
+      "2 — મને એક વિષય આપો"
+    );
+  }
+  return (
+    "Hello.\n\nWould you like to share a story\nor would you like me to suggest a topic?\n\n" +
+    "1 — I will share a story\n" +
+    "2 — Give me a topic"
+  );
+}
+
+function appTellStoryPrompt(lang) {
+  if (lang === "hi") return "ठीक है। अपनी कहानी बताइए। पूरा होने पर DONE लिखें।";
+  if (lang === "gu") return "બરાબર. તમારી વાર્તા કહો. પૂરું થાય ત્યારે DONE લખો.";
+  return "Okay. Please share your story. Type DONE when finished.";
+}
+
+function appTopicPrompt(lang, topic) {
   if (lang === "hi")
-    return "नमस्ते। कोई याद साझा करें। आप बोल सकते हैं या लिख सकते हैं। जब पूरा हो जाए तो DONE लिखें।";
+    return `यह एक विषय है:\n\n${topic}\n\nक्या यही विषय रखें?\nYES — शुरू करें\nANOTHER — दूसरा विषय`;
   if (lang === "gu")
-    return "નમસ્તે. કોઈ યાદ શેર કરો. તમે બોલી શકો અથવા લખી શકો. પૂરું થાય ત્યારે DONE લખો.";
-  return "Hello. Share a memory. Speak or type freely. When finished, type DONE.";
+    return `આ એક વિષય છે:\n\n${topic}\n\nઆ વિષય રાખવો છે?\nYES — શરૂ કરો\nANOTHER — બીજો વિષય`;
+  return `Here is a topic:\n\n${topic}\n\nUse this topic?\nYES — start story\nANOTHER — show another topic`;
 }
 
 function appSaveAsk(lang) {
-  if (lang === "hi") return "ये कहानी कैसी लगी? सेव करने के लिए YES लिखें, या बदलने के लिए NO।";
+  if (lang === "hi") return "यह कहानी कैसी लगी? सेव करने के लिए YES लिखें, बदलने के लिए NO।";
   if (lang === "gu") return "આ વાર્તા કેવી લાગી? સેવ માટે YES, બદલવા NO લખો.";
   return "How is this story? Reply YES to save or NO to rewrite.";
 }
@@ -395,35 +479,9 @@ function appSavedMsg(lang, user_id) {
   return `Saved. Your stories: ${url}`;
 }
 
-function cleanTranscriptBasic(text) {
-  const lines = String(text || "")
-    .split("\n")
-    .map(l => l.trim())
-    .filter(Boolean);
-
-  const out = [];
-  const seen = new Set();
-
-  for (const line of lines) {
-    const key = line.toLowerCase();
-
-    // drop consecutive duplicate
-    const prev = out[out.length - 1];
-    if (prev && prev.toLowerCase() === key) continue;
-
-    // drop exact repeats
-    if (seen.has(key)) continue;
-
-    out.push(line);
-    seen.add(key);
-  }
-
-  return out.join("\n");
-}
-
-export async function handleAppTurn({ user_id, text, lang }) {
+export async function handleAppTurn({ user_id, text, lang, seed_prompt }) {
   const incoming = String(text || "").trim();
-  const chosenLang = lang || "hi";
+  const chosenLang = lang || "en";
 
   let session = await loadSession(user_id);
 
@@ -431,18 +489,21 @@ export async function handleAppTurn({ user_id, text, lang }) {
   if (!session) {
     await upsertSession({
       user_id,
-      state: "APP_BUILD",
+      state: "APP_MODE",
       story_text: "",
       story_id: "",
       consent: true,
       lang: chosenLang,
       msg_count: 0,
+      seed_prompt: "",
+      last_agent_prompt: "",
     });
 
     return {
       screen: "BUILD",
       story_so_far: "",
-      agent_prompt: appStartPrompt(chosenLang),
+      agent_prompt: appModePrompt(chosenLang),
+      seed_prompt: "",
     };
   }
 
@@ -457,33 +518,168 @@ export async function handleAppTurn({ user_id, text, lang }) {
 
   const L = session.lang || chosenLang;
 
-  // BUILD: collect user story chunks only
+  // If UI sends a seed_prompt explicitly (Pick a Prompt button)
+  // Treat it like "topic mode" and ask YES/ANOTHER.
+  if (seed_prompt !== undefined && String(seed_prompt || "").trim() !== "") {
+    const topic = String(seed_prompt).trim();
+
+    await upsertSession({
+      ...session,
+      state: "APP_TOPIC_CONFIRM",
+      seed_prompt: topic,
+      // clear last agent prompt to avoid carry-over
+      last_agent_prompt: "",
+    });
+
+    return {
+      screen: "BUILD",
+      story_so_far: session.story_text || "",
+      agent_prompt: appTopicPrompt(L, topic),
+      seed_prompt: topic,
+    };
+  }
+
+  // MODE: choose story vs topic
+  if (session.state === "APP_MODE") {
+    if (!incoming) {
+      return {
+        screen: "BUILD",
+        story_so_far: "",
+        agent_prompt: appModePrompt(L),
+        seed_prompt: session.seed_prompt || "",
+      };
+    }
+
+    if (incoming === "1") {
+      await upsertSession({
+        ...session,
+        state: "APP_BUILD",
+        story_text: "",
+        msg_count: 0,
+        seed_prompt: "",
+        last_agent_prompt: "",
+      });
+
+      return {
+        screen: "BUILD",
+        story_so_far: "",
+        agent_prompt: appTellStoryPrompt(L),
+        seed_prompt: "",
+      };
+    }
+
+    if (incoming === "2") {
+      const topic = randomTopic(L);
+
+      await upsertSession({
+        ...session,
+        state: "APP_TOPIC_CONFIRM",
+        story_text: "",
+        msg_count: 0,
+        seed_prompt: topic,
+        last_agent_prompt: "",
+      });
+
+      return {
+        screen: "BUILD",
+        story_so_far: "",
+        agent_prompt: appTopicPrompt(L, topic),
+        seed_prompt: topic,
+      };
+    }
+
+    return {
+      screen: "BUILD",
+      story_so_far: "",
+      agent_prompt: appModePrompt(L),
+      seed_prompt: session.seed_prompt || "",
+    };
+  }
+
+  // TOPIC CONFIRM
+  if (session.state === "APP_TOPIC_CONFIRM") {
+    if (!incoming) {
+      return {
+        screen: "BUILD",
+        story_so_far: "",
+        agent_prompt: appTopicPrompt(L, session.seed_prompt || randomTopic(L)),
+        seed_prompt: session.seed_prompt || "",
+      };
+    }
+
+    const yn = normalizeYesNo(incoming);
+
+    if (yn === "YES") {
+      await upsertSession({
+        ...session,
+        state: "APP_BUILD",
+        story_text: "",
+        msg_count: 0,
+        last_agent_prompt: "",
+      });
+
+      return {
+        screen: "BUILD",
+        story_so_far: "",
+        agent_prompt: appTellStoryPrompt(L),
+        seed_prompt: session.seed_prompt || "",
+      };
+    }
+
+    if (incoming.toLowerCase() === "another") {
+      const topic = randomTopic(L);
+
+      await upsertSession({
+        ...session,
+        seed_prompt: topic,
+        last_agent_prompt: "",
+      });
+
+      return {
+        screen: "BUILD",
+        story_so_far: "",
+        agent_prompt: appTopicPrompt(L, topic),
+        seed_prompt: topic,
+      };
+    }
+
+    // stay in topic confirm until valid response
+    return {
+      screen: "BUILD",
+      story_so_far: "",
+      agent_prompt: appTopicPrompt(L, session.seed_prompt || randomTopic(L)),
+      seed_prompt: session.seed_prompt || "",
+    };
+  }
+
+  // BUILD: collect story chunks + AI probing
   if (session.state === "APP_BUILD") {
     if (!incoming) {
       return {
         screen: "BUILD",
         story_so_far: session.story_text || "",
-        agent_prompt: appStartPrompt(L),
+        agent_prompt: session.last_agent_prompt || appTellStoryPrompt(L),
+        seed_prompt: session.seed_prompt || "",
       };
     }
 
     if (isDone(incoming)) {
-      // ✅ NEW: polish the story NOW, before review
-      const cleaned = cleanTranscriptBasic(session.story_text || "");
-      const raw = session.story_text || "";
-      const polished = await polishStory({ lang: L, story_text: raw });
+      const raw = (session.story_text || "").trim();
 
+      const polished = await polishStory({ lang: L, story_text: raw });
       const finalBody = polished?.body?.trim() ? polished.body.trim() : raw.trim();
+
       const draft = polished?.body?.trim()
-        ? { title: polished.title || "A Memory", body: finalBody }
+        ? { title: polished.title || (L === "hi" ? "एक कहानी" : L === "gu" ? "એક વાર્તા" : "A Story"), body: finalBody }
         : makeDraft(finalBody);
 
-      // ✅ overwrite session.story_text so SAVE writes cleaned story
       await upsertSession({
         ...session,
         state: "APP_REVIEW",
         story_text: finalBody,
         msg_count: 0,
+        // keep seed_prompt for metadata
+        last_agent_prompt: "",
       });
 
       return {
@@ -491,20 +687,34 @@ export async function handleAppTurn({ user_id, text, lang }) {
         story_so_far: finalBody,
         draft,
         agent_prompt: appSaveAsk(L),
+        seed_prompt: session.seed_prompt || "",
       };
     }
 
-    const updatedText = session.story_text
-      ? session.story_text + "\n" + incoming
-      : incoming;
+    const updatedText = session.story_text ? session.story_text + "\n" + incoming : incoming;
 
-    // Keep your existing AI probing for BUILD
-    let agent_prompt = appStartPrompt(L);
+    let agent_prompt = appTellStoryPrompt(L);
+
     try {
+      const recentLines = String(updatedText || "")
+        .split("\n")
+        .map((s) => s.trim())
+        .filter(Boolean)
+        .slice(-8);
+
+      const contextText = recentLines.join("\n");
+
+      const aiInput =
+        (session.seed_prompt ? `Theme:\n${session.seed_prompt}\n\n` : "") +
+        (session.last_agent_prompt ? `Previous question:\n${session.last_agent_prompt}\n\n` : "") +
+        `Context so far:\n${contextText}\n\n` +
+        `Latest message:\n${incoming}\n`;
+
       const ai = await generateReflectionAndQuestion({
         lang: L,
-        story_text: updatedText,
+        story_text: aiInput,
       });
+
       if (ai?.combined) agent_prompt = ai.combined;
       else agent_prompt = getText(L, "added");
     } catch {
@@ -516,12 +726,14 @@ export async function handleAppTurn({ user_id, text, lang }) {
       state: "APP_BUILD",
       story_text: updatedText,
       msg_count: (session.msg_count || 0) + 1,
+      last_agent_prompt: agent_prompt,
     });
 
     return {
       screen: "BUILD",
       story_so_far: updatedText,
       agent_prompt,
+      seed_prompt: session.seed_prompt || "",
     };
   }
 
@@ -532,7 +744,7 @@ export async function handleAppTurn({ user_id, text, lang }) {
     if (yn === "YES") {
       const saved = await saveStory({
         user_id,
-        story_text: session.story_text || "", // ✅ already cleaned
+        story_text: session.story_text || "",
         publish: true,
       });
 
@@ -540,12 +752,14 @@ export async function handleAppTurn({ user_id, text, lang }) {
 
       await upsertSession({
         user_id,
-        state: "APP_BUILD",
+        state: "APP_MODE",
         story_text: "",
         story_id: "",
         consent: true,
         lang: L,
         msg_count: 0,
+        seed_prompt: "",
+        last_agent_prompt: "",
       });
 
       return {
@@ -553,6 +767,7 @@ export async function handleAppTurn({ user_id, text, lang }) {
         story_so_far: "",
         agent_prompt: appSavedMsg(L, user_id),
         saved_url: `/u/${user_id}`,
+        seed_prompt: "",
       };
     }
 
@@ -565,12 +780,15 @@ export async function handleAppTurn({ user_id, text, lang }) {
         consent: true,
         lang: L,
         msg_count: 0,
+        seed_prompt: session.seed_prompt || "",
+        last_agent_prompt: "",
       });
 
       return {
         screen: "BUILD",
         story_so_far: "",
-        agent_prompt: appStartPrompt(L),
+        agent_prompt: appTellStoryPrompt(L),
+        seed_prompt: session.seed_prompt || "",
       };
     }
 
@@ -580,23 +798,27 @@ export async function handleAppTurn({ user_id, text, lang }) {
       story_so_far: session.story_text || "",
       draft,
       agent_prompt: appSaveAsk(L),
+      seed_prompt: session.seed_prompt || "",
     };
   }
 
-  // Any other state: reset to app
+  // Any other state: reset to mode selection
   await upsertSession({
     user_id,
-    state: "APP_BUILD",
+    state: "APP_MODE",
     story_text: "",
     story_id: "",
     consent: true,
     lang: L,
     msg_count: 0,
+    seed_prompt: "",
+    last_agent_prompt: "",
   });
 
   return {
     screen: "BUILD",
     story_so_far: "",
-    agent_prompt: appStartPrompt(L),
+    agent_prompt: appModePrompt(L),
+    seed_prompt: "",
   };
 }

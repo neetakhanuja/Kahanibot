@@ -28,7 +28,7 @@ function makeDraft(transcript) {
   ]);
 
   const firstMeaningful =
-    lines.find((l) => !greetingWords.has(l.toLowerCase())) || "A Memory";
+    lines.find((l) => !greetingWords.has(l.toLowerCase())) || "A Story";
 
   const title = firstMeaningful.slice(0, 60);
   const body = clean;

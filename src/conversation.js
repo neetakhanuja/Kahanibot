@@ -40,12 +40,12 @@ function getText(lang, key, vars = {}) {
         "Choose your language (reply with 1/2/3):\n1) Hindi\n2) Gujarati\n3) English",
 
       startCollecting:
-        "Okay. Please share your story. Speak or type freely. When you are finished, type DONE.",
-      added: "Thank you. Go on. (Type DONE when finished.)",
+        "Okay. Please share your story. Speak or type freely. When you are finished, press the Finish Story button.",
+      added: "Thank you. Please continue. Press Finish Story when you are done.",
 
       draftIntro: "Here is your draft:",
       saveAsk: "Save this story? Reply YES to save or NO to rewrite.",
-      rewrite: "Okay. Please share your story again. Type DONE when finished.",
+      rewrite: "Okay. Please share your story again. Press Finish Story when you are done.",
 
       published: `Saved. View your stories here: /u/${vars.user_id || ""}`,
 
@@ -62,12 +62,12 @@ function getText(lang, key, vars = {}) {
       chooseLang: "भाषा चुनें (1/2/3):\n1) हिंदी\n2) गुजराती\n3) English",
 
       startCollecting:
-        "ठीक है। अपनी कहानी साझा करें। आप बोल सकते हैं या लिख सकते हैं। जब पूरा हो जाए तो DONE लिखें।",
-      added: "धन्यवाद। आगे बताइए। (पूरा होने पर DONE लिखें।)",
+        "ठीक है। अपनी कहानी साझा करें। आप बोल सकते हैं या लिख सकते हैं। जब कहानी पूरी हो जाए तो Finish Story बटन दबाएँ।",
+      added: "धन्यवाद। आगे बताइए। पूरा होने पर Finish Story बटन दबाएँ।",
 
       draftIntro: "यह आपका ड्राफ्ट है:",
       saveAsk: "इसे सेव करें? सेव के लिए YES, दोबारा लिखने के लिए NO।",
-      rewrite: "ठीक है। कृपया कहानी फिर से बताइए। पूरा होने पर DONE लिखें।",
+      rewrite: "ठीक है। कृपया कहानी फिर से बताइए। पूरा होने पर Finish Story बटन दबाएँ।",
 
       published: `सेव हो गया। आपकी कहानियाँ: /u/${vars.user_id || ""}`,
 
@@ -84,12 +84,12 @@ function getText(lang, key, vars = {}) {
       chooseLang: "ભાષા પસંદ કરો (1/2/3):\n1) Hindi\n2) Gujarati\n3) English",
 
       startCollecting:
-        "બરાબર. તમારી વાર્તા શેર કરો. તમે બોલી શકો અથવા લખી શકો. પૂરું થાય ત્યારે DONE લખો.",
-      added: "આભાર. આગળ કહો. (પૂરું થાય ત્યારે DONE લખો.)",
+        "બરાબર. તમારી વાર્તા શેર કરો. તમે બોલી શકો અથવા લખી શકો. વાર્તા પૂર્ણ થાય પછી Finish Story બટન દબાવો.",
+      added: "આભાર. આગળ કહો. વાર્તા પૂર્ણ થાય ત્યારે Finish Story બટન દબાવો.",
 
       draftIntro: "આ રહ્યો તમારો ડ્રાફ્ટ:",
       saveAsk: "સેવ કરવું છે? સેવ માટે YES, ફરી લખવા NO.",
-      rewrite: "બરાબર. કૃપા કરીને વાર્તા ફરી કહો. પૂરું થાય ત્યારે DONE લખો.",
+      rewrite: "બરાબર. કૃપા કરીને વાર્તા ફરી કહો. વાર્તા પૂર્ણ થાય ત્યારે Finish Story બટન દબાવો.",
 
       published: `સેવ થઈ ગયું. તમારી વાર્તાઓ: /u/${vars.user_id || ""}`,
 
@@ -453,9 +453,9 @@ function appModePrompt(lang) {
 }
 
 function appTellStoryPrompt(lang) {
-  if (lang === "hi") return "ठीक है। अपनी कहानी बताइए। पूरा होने पर DONE लिखें।";
-  if (lang === "gu") return "બરાબર. તમારી વાર્તા કહો. પૂરું થાય ત્યારે DONE લખો.";
-  return "Okay. Please share your story. Type DONE when finished.";
+  if (lang === "hi") return "ठीक है। अपनी कहानी बताइए। जब कहानी पूरी हो जाए, नीचे दिए गए Finish Story बटन को दबाइए।";
+  if (lang === "gu") return "બરાબર. તમારી વાર્તા કહો. વાર્તા પૂર્ણ થાય પછી નીચેનો Finish Story બટન દબાવો.";
+  return "Okay. Please share your story. When you are finished, press the Finish Story button below.";
 }
 
 function appTopicPrompt(lang, topic) {
@@ -517,6 +517,28 @@ export async function handleAppTurn({ user_id, text, lang, seed_prompt }) {
   }
 
   const L = session.lang || chosenLang;
+
+  // Web app reset: return to fresh mode selection
+  if (incoming === "RESET") {
+    await upsertSession({
+      user_id,
+      state: "APP_MODE",
+      story_text: "",
+      story_id: "",
+      consent: true,
+      lang: L,
+      msg_count: 0,
+      seed_prompt: "",
+      last_agent_prompt: "",
+    });
+
+    return {
+      screen: "BUILD",
+      story_so_far: "",
+      agent_prompt: appModePrompt(L),
+      seed_prompt: "",
+    };
+  }
 
   // If UI sends a seed_prompt explicitly (Pick a Prompt button)
   // Treat it like "topic mode" and ask YES/ANOTHER.

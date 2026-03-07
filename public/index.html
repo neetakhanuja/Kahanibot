@@ -2,9 +2,8 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Kahani — Story Builder</title>
-
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Kahani</title>
   <style>
     :root{
       --bg:#f7f5f2;
@@ -13,57 +12,55 @@
       --text:#1f1f1f;
       --muted:#6b6b6b;
       --accent:#2f6f4e;
+      --accentSoft:#e8f1eb;
+      --soft:#f1efe9;
       --mic:#6b4eff;
       --micOn:#d43b3b;
-      --soft:#f1efe9;
+      --shadow:0 2px 8px rgba(0,0,0,0.05);
     }
     *{ box-sizing:border-box; }
-    body{
+    html, body{
       margin:0;
-      font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+      padding:0;
       background:var(--bg);
       color:var(--text);
-      height:100vh;
-      overflow:hidden;
+      font-family:system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+      min-height:100%;
     }
-    .wrap{
-      max-width:820px;
+    body{
+      min-height:100vh;
+    }
+    .app{
+      max-width:760px;
       margin:0 auto;
-      height:100vh;
+      min-height:100vh;
       display:flex;
       flex-direction:column;
+      padding-bottom:16px;
     }
     header{
-      padding:14px 14px 6px;
+      padding:16px 16px 8px;
       text-align:center;
-      font-size:22px;
-      font-weight:750;
+      font-size:28px;
+      font-weight:800;
     }
-    .sub{
-      text-align:center;
-      font-size:15px;
-      color:var(--muted);
-      margin:0 14px 10px;
-    }
-
-    .topRow{
-      display:flex;
+    .topbar{
+      display:none;
       align-items:center;
       justify-content:space-between;
       gap:10px;
-      margin:0 12px 10px;
+      padding:0 14px 10px;
     }
-    .pill{
-      font-size:13px;
-      color:#333;
+    .topbar.show{ display:flex; }
+    .namePill{
       background:#fff;
       border:1px solid var(--border);
       border-radius:999px;
-      padding:8px 10px;
-      max-width:55%;
-      overflow:hidden;
-      text-overflow:ellipsis;
-      white-space:nowrap;
+      padding:10px 14px;
+      font-size:15px;
+      min-height:42px;
+      display:flex;
+      align-items:center;
     }
     .topActions{
       display:flex;
@@ -71,477 +68,772 @@
       flex-wrap:wrap;
       justify-content:flex-end;
     }
-
-    .main{
+    .screen{
+      display:none;
       flex:1;
-      padding:0 12px 12px;
-      overflow:hidden;
+      padding:0 14px 14px;
+    }
+    .screen.active{
+      display:block;
+    }
+    .card{
+      background:var(--card);
+      border:1px solid var(--border);
+      border-radius:18px;
+      padding:16px;
+      box-shadow:var(--shadow);
+    }
+    .stack{
       display:flex;
       flex-direction:column;
       gap:12px;
     }
-    .screen{ display:none; flex:1; overflow:hidden; }
-    .screen.active{ display:flex; flex-direction:column; gap:12px; }
-
-    .card{
-      background:var(--card);
-      border:1px solid var(--border);
-      border-radius:16px;
-      padding:14px;
-      box-shadow: 0 1px 2px rgba(0,0,0,0.04);
-    }
     .label{
-      font-size:13px;
+      font-size:14px;
       color:var(--muted);
-      margin-bottom:8px;
+      margin-bottom:6px;
     }
-
-    input, select{
+    input, select, textarea{
       width:100%;
       font-size:18px;
-      padding:12px 12px;
-      border:1px solid #d6d2cc;
-      border-radius:12px;
-      outline:none;
+      border:1px solid #d8d4ce;
+      border-radius:14px;
+      padding:14px;
       background:#fff;
+      color:var(--text);
+      outline:none;
+    }
+    textarea{
+      resize:vertical;
+      min-height:110px;
+      line-height:1.6;
     }
     button{
-      font-size:17px;
-      padding:12px 14px;
-      border-radius:12px;
       border:none;
       cursor:pointer;
-      white-space:nowrap;
+      border-radius:14px;
+      padding:14px 16px;
+      font-size:18px;
+    }
+    button:disabled{
+      opacity:0.6;
+      cursor:not-allowed;
     }
     .primary{
       background:var(--accent);
       color:#fff;
-      width:100%;
-      font-size:18px;
-      padding:14px 14px;
-      border-radius:14px;
     }
     .secondary{
       background:var(--soft);
-      border:1px solid var(--border);
       color:#333;
+      border:1px solid var(--border);
     }
-    .secondary[disabled],
-    .primary[disabled]{
-      opacity:0.6;
-      cursor:not-allowed;
+    .ghost{
+      background:#fff;
+      color:#333;
+      border:1px solid var(--border);
     }
-
-    /* BUILDER v2 layout */
-    .builder{
-      flex:1;
-      overflow:hidden;
-      display:flex;
-      flex-direction:column;
-      gap:12px;
-    }
-    .promptStage{
-      flex:1;
-      display:flex;
-      flex-direction:column;
-      justify-content:center;
-      align-items:center;
-      gap:12px;
-      padding:8px 8px 0;
-      overflow:hidden;
-    }
-    #promptBig{
-      width:100%;
-      max-width:720px;
+    .full{ width:100%; }
+    .title{
+      font-size:28px;
+      line-height:1.25;
+      font-weight:750;
+      margin-bottom:8px;
       text-align:center;
-      font-size:26px;
-      line-height:1.35;
-      padding:18px 18px;
+    }
+    .subtitle{
+      font-size:18px;
+      line-height:1.55;
+      color:var(--muted);
+      text-align:center;
+    }
+    .homeButtons{
+      display:flex;
+      flex-direction:column;
+      gap:14px;
+      margin-top:18px;
+    }
+    .homeBtn{
+      text-align:left;
+      padding:18px;
       border-radius:18px;
-      background:var(--card);
-      border:1px solid var(--border);
-      box-shadow: 0 1px 2px rgba(0,0,0,0.04);
-      white-space:pre-wrap;
-    }
-
-    /* Theme pill under prompt */
-    #themePill{
-      display:none;
-      max-width:720px;
-      width:100%;
-      text-align:center;
-      font-size:14px;
-      color:#333;
       background:#fff;
       border:1px solid var(--border);
-      border-radius:999px;
-      padding:10px 12px;
-      white-space:nowrap;
-      overflow:hidden;
-      text-overflow:ellipsis;
+      box-shadow:var(--shadow);
     }
-
-    .controlsRow{
-      width:100%;
-      max-width:720px;
+    .homeBtn strong{
+      display:block;
+      font-size:22px;
+      margin-bottom:6px;
+      color:var(--text);
+    }
+    .homeBtn span{
+      display:block;
+      font-size:16px;
+      line-height:1.5;
+      color:var(--muted);
+    }
+    .topicWrap{
+      display:flex;
+      flex-direction:column;
+      gap:14px;
+    }
+    .topicCard{
+      min-height:260px;
       display:flex;
       align-items:center;
-      justify-content:space-between;
-      gap:12px;
-      padding:8px 6px;
+      justify-content:center;
+      text-align:center;
+      padding:24px;
+      font-size:32px;
+      line-height:1.35;
+      font-weight:700;
+      background:#fff;
+      border:1px solid var(--border);
+      border-radius:22px;
+      box-shadow:var(--shadow);
+      user-select:none;
+      touch-action:pan-y;
     }
-    .doneBtn{
-      min-width:92px;
-      padding:14px 14px;
-      border-radius:14px;
+    .topicCount{
+      text-align:center;
+      color:var(--muted);
+      font-size:16px;
     }
-    .micZone{
-      flex:1;
+    .row{
+      display:flex;
+      gap:10px;
+    }
+    .row > *{ flex:1; }
+    .storyScreen{
+      display:flex;
+      flex-direction:column;
+      gap:14px;
+    }
+    .promptChip{
+      display:none;
+      background:var(--accentSoft);
+      border:1px solid #c9ddcf;
+      color:#234635;
+      border-radius:16px;
+      padding:14px;
+      font-size:18px;
+      line-height:1.5;
+    }
+    .agentCard{
+      background:#fff;
+      border:1px solid var(--border);
+      border-radius:20px;
+      box-shadow:var(--shadow);
+      padding:18px;
+    }
+    .agentLabel{
+      font-size:14px;
+      color:var(--muted);
+      margin-bottom:8px;
+    }
+    .agentText{
+      font-size:28px;
+      line-height:1.45;
+      white-space:pre-wrap;
+    }
+    .agentActions{
+      display:flex;
+      justify-content:flex-end;
+      margin-top:12px;
+    }
+    .smallBtn{
+      font-size:16px;
+      padding:11px 14px;
+      border-radius:12px;
+    }
+    .micArea{
       display:flex;
       flex-direction:column;
       align-items:center;
       gap:10px;
-      min-width:0;
+      padding:8px 0 2px;
     }
     .micBtn{
-      width:98px;
-      height:98px;
+      width:110px;
+      height:110px;
       border-radius:999px;
       background:var(--mic);
+      border:none;
       display:flex;
       align-items:center;
       justify-content:center;
-      border:none;
-      cursor:pointer;
-      box-shadow: 0 12px 28px rgba(107,78,255,0.22);
+      box-shadow:0 12px 28px rgba(107,78,255,0.22);
     }
     .micBtn.listening{
       background:var(--micOn);
-      box-shadow: 0 12px 28px rgba(212,59,59,0.18);
+      box-shadow:0 12px 28px rgba(212,59,59,0.18);
     }
-    .micIcon{ width:38px; height:38px; fill:#fff; }
-    #micHint{
-      font-size:14px;
+    .micBtn svg{
+      width:42px;
+      height:42px;
+      fill:#fff;
+    }
+    .micHint{
+      font-size:18px;
+      line-height:1.5;
       color:var(--muted);
       text-align:center;
-      line-height:1.35;
       max-width:520px;
     }
-
-    .typeDock{
-      width:100%;
-      max-width:720px;
-      background:var(--card);
-      border:1px solid var(--border);
-      border-radius:16px;
-      padding:10px;
-      box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+    .typePanel{
+      display:flex;
+      flex-direction:column;
+      gap:10px;
     }
-    .typeTop{
+    .finishRow{
       display:flex;
       align-items:center;
       justify-content:space-between;
-      gap:10px;
-      margin-bottom:8px;
+      gap:12px;
+      margin-top:4px;
     }
-    .smallLink{
-      background:transparent;
-      border:1px solid var(--border);
-      color:#333;
-      padding:10px 12px;
-      border-radius:12px;
-      font-size:15px;
+    .finishRow .left{
+      display:flex;
+      gap:8px;
+      flex-wrap:wrap;
     }
-    .smallLink[disabled]{ opacity:0.6; cursor:not-allowed; }
-
-    #typeArea{ display:none; gap:10px; }
-    #typeArea.open{ display:flex; }
-    #typeInput{ flex:1; min-width:0; }
-    .sendBtn{ background:var(--accent); color:#fff; min-width:86px; }
-    .sendBtn[disabled]{ opacity:0.6; cursor:not-allowed; }
-
-    /* Collapsible story */
-    #storyPanel{ display:none; margin-top:10px; }
-    #storyPanel.open{ display:block; }
-    #storyBox{
-      max-height:26vh;
-      overflow:auto;
-      font-size:18px;
+    .finishRow .right{
+      margin-left:auto;
+    }
+    .finishBtn{
+      min-width:180px;
+    }
+    .reviewText{
+      font-size:20px;
       line-height:1.7;
       white-space:pre-wrap;
-      padding:12px;
-      border:1px solid var(--border);
-      border-radius:14px;
-      background:#fff;
-    }
-
-    /* REVIEW + SUCCESS */
-    #draftBox{
-      font-size:18px;
-      line-height:1.7;
-      white-space:pre-wrap;
-      max-height:52vh;
+      max-height:56vh;
       overflow:auto;
     }
-    .btnRow{ display:flex; gap:10px; }
-    .btnRow button{ flex:1; }
-    .tiny{
-      font-size:13px;
+    .note{
+      font-size:14px;
+      line-height:1.5;
       color:var(--muted);
-      line-height:1.4;
-      margin-top:10px;
+      text-align:center;
     }
+    .hidden{ display:none !important; }
 
-    @media (max-width:480px){
-      #promptBig{ font-size:22px; }
-      .micBtn{ width:92px; height:92px; }
-      .doneBtn{ min-width:86px; }
-      .pill{ max-width:48%; }
+    @media (max-width: 520px){
+      header{ font-size:26px; }
+      .title{ font-size:25px; }
+      .subtitle{ font-size:17px; }
+      .topicCard{ min-height:240px; font-size:28px; }
+      .agentText{ font-size:24px; }
+      .finishRow{ align-items:stretch; flex-direction:column; }
+      .finishRow .left, .finishRow .right{ width:100%; }
+      .finishBtn{ width:100%; min-width:0; }
+      .row{ flex-direction:column; }
+      .topbar{ align-items:flex-start; }
     }
   </style>
 </head>
-
 <body>
-  <div class="wrap">
+  <div class="app">
     <header>Kahani</header>
-    <div class="sub" id="subtitle">Speak freely. The agent will guide you.</div>
 
-    <div class="topRow">
-      <div class="pill" id="whoPill" style="display:none;"></div>
+    <div class="topbar" id="topbar">
+      <div class="namePill" id="namePill"></div>
       <div class="topActions">
-        <button class="secondary" id="storiesBtn" style="display:none;" onclick="openStories()">My Stories</button>
-        <button class="secondary" id="newBtn" style="display:none;" onclick="startNewStory()">New Story</button>
+        <button class="secondary smallBtn" id="storiesBtn" onclick="openStories()"></button>
       </div>
     </div>
 
-    <div class="main">
+    <div class="screen active" id="screenWelcome">
+      <div class="card stack">
+        <div class="title" id="welcomeTitle"></div>
+        <div class="subtitle" id="welcomeSubtitle"></div>
 
-      <!-- WELCOME -->
-      <div class="screen active" id="screenWelcome">
-        <div class="card">
-          <div class="label">First name</div>
-          <input id="firstName" placeholder="e.g., Shanta" />
+        <div>
+          <div class="label" id="labelName"></div>
+          <input id="firstName" />
+        </div>
 
-          <div style="height:10px;"></div>
+        <div>
+          <div class="label" id="labelAge"></div>
+          <input id="age" inputmode="numeric" />
+        </div>
 
-          <div class="label">Age</div>
-          <input id="age" inputmode="numeric" placeholder="e.g., 67" />
-
-          <div style="height:10px;"></div>
-
-          <div class="label">Language</div>
+        <div>
+          <div class="label" id="labelLang"></div>
           <select id="lang">
             <option value="hi">Hindi</option>
             <option value="gu">Gujarati</option>
             <option value="en">English</option>
           </select>
+        </div>
 
-          <div style="height:14px;"></div>
+        <button class="primary full" onclick="saveProfile()" id="continueBtn"></button>
+      </div>
+    </div>
 
-          <button class="primary" onclick="saveProfile()">Continue</button>
-
-          <div class="tiny">
-            Tip: On phones, microphone works best over HTTPS (Render).
-          </div>
+    <div class="screen" id="screenHome">
+      <div class="card">
+        <div class="title" id="homeTitle"></div>
+        <div class="subtitle" id="homeSubtitle"></div>
+        <div class="homeButtons">
+          <button class="homeBtn" onclick="beginStoryMode()">
+            <strong id="haveStoryTitle"></strong>
+            <span id="haveStorySub"></span>
+          </button>
+          <button class="homeBtn" onclick="goToTopics()">
+            <strong id="wantTopicTitle"></strong>
+            <span id="wantTopicSub"></span>
+          </button>
         </div>
       </div>
+    </div>
 
-      <!-- BUILDER -->
-      <div class="screen" id="screenBuilder">
-        <div class="builder">
-          <div class="promptStage">
-            <div id="promptBig">…</div>
-            <div id="themePill"></div>
-
-            <div class="controlsRow">
-              <button class="secondary doneBtn" id="doneBtn" onclick="endStory()">Done</button>
-
-              <div class="micZone">
-                <button class="micBtn" id="micBtn" onclick="toggleMic()" title="Speak">
-                  <svg class="micIcon" viewBox="0 0 24 24" aria-hidden="true">
-                    <path d="M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-3.08A7 7 0 0 0 19 11h-2z"/>
-                  </svg>
-                </button>
-                <div id="micHint">Tap mic, speak. When finished, tap Done.</div>
-              </div>
-
-              <button class="secondary doneBtn" id="cardsBtn" onclick="pickCard()">Pick a Prompt</button>
-            </div>
-
-            <div class="typeDock">
-              <div class="typeTop">
-                <button class="smallLink" id="typeToggle" onclick="toggleTyping()">Type</button>
-                <button class="smallLink" id="storyToggle" onclick="toggleStoryPanel()">Show story</button>
-              </div>
-
-              <div id="typeArea">
-                <input id="typeInput" placeholder="Type (optional)" />
-                <button class="sendBtn" id="sendTypedBtn" onclick="sendTyped()">Send</button>
-              </div>
-
-              <div id="storyPanel">
-                <div class="label" style="margin:10px 0 8px;">Your story so far</div>
-                <div id="storyBox"></div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- REVIEW -->
-      <div class="screen" id="screenReview">
+    <div class="screen" id="screenTopics">
+      <div class="topicWrap">
         <div class="card">
-          <div class="label">Review</div>
-          <div id="draftBox"></div>
+          <div class="title" id="topicTitle"></div>
+          <div class="subtitle" id="topicSubtitle"></div>
+        </div>
 
-          <div style="height:12px;"></div>
+        <div class="topicCard" id="topicCard"></div>
+        <div class="topicCount" id="topicCount"></div>
 
-          <div class="btnRow">
-            <button class="primary" onclick="saveStoryYes()">Save</button>
-            <button class="secondary" onclick="reviseStory()">Change</button>
+        <div class="row">
+          <button class="secondary" onclick="prevCard()" id="prevBtn"></button>
+          <button class="secondary" onclick="nextCard()" id="nextBtn"></button>
+        </div>
+
+        <button class="primary full" onclick="selectPrompt()" id="selectPromptBtn"></button>
+        <button class="ghost full" onclick="goHome()" id="backHomeBtn"></button>
+      </div>
+    </div>
+
+    <div class="screen" id="screenStory">
+      <div class="storyScreen">
+        <div class="promptChip" id="promptChip"></div>
+
+        <div class="agentCard">
+          <div class="agentLabel" id="agentLabel"></div>
+          <div class="agentText" id="agentText">…</div>
+          <div class="agentActions">
+            <button class="ghost smallBtn" onclick="speakAgentText()" id="hearBtn"></button>
           </div>
+        </div>
 
-          <div class="tiny">
-            Save writes to Google Sheets and appears in “My Stories”.
+        <div class="card micArea">
+          <button class="micBtn" id="micBtn" onclick="toggleMic()" title="Speak">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-3.08A7 7 0 0 0 19 11h-2z"/>
+            </svg>
+          </button>
+          <div class="micHint" id="micHint"></div>
+        </div>
+
+        <div class="card typePanel">
+          <button class="ghost" onclick="toggleTyping()" id="typingToggleBtn"></button>
+          <div id="typingArea" class="hidden">
+            <textarea id="typeInput"></textarea>
+            <button class="secondary full" onclick="sendTyped()" id="sendTypedBtn"></button>
+          </div>
+        </div>
+
+        <div class="finishRow">
+          <div class="left">
+            <button class="ghost smallBtn" onclick="goHome()" id="homeBtnStory"></button>
+          </div>
+          <div class="right">
+            <button class="primary finishBtn" onclick="finishStory()" id="finishStoryBtn"></button>
           </div>
         </div>
       </div>
+    </div>
 
-      <!-- SUCCESS -->
-      <div class="screen" id="screenSuccess">
-        <div class="card">
-          <div style="font-size:18px; line-height:1.6;" id="successMsg">
-            Saved. Thank you for sharing.
-          </div>
-          <div style="height:12px;"></div>
-          <button class="primary" onclick="startNewStory()">Make another story</button>
-          <div style="height:10px;"></div>
-          <button class="secondary" onclick="openStories()">View My Stories</button>
+    <div class="screen" id="screenReview">
+      <div class="card stack">
+        <div class="title" id="reviewTitle"></div>
+        <div class="subtitle" id="reviewSubtitle"></div>
+        <div class="reviewText" id="draftBox"></div>
+        <div class="row">
+          <button class="primary" onclick="saveStory()" id="saveBtn"></button>
+          <button class="secondary" onclick="editStory()" id="editBtn"></button>
         </div>
       </div>
+    </div>
 
+    <div class="screen" id="screenSuccess">
+      <div class="card stack">
+        <div class="title" id="successTitle"></div>
+        <div class="subtitle" id="successSubtitle"></div>
+        <button class="primary full" onclick="goHome()" id="anotherStoryBtn"></button>
+        <button class="secondary full" onclick="openStories()" id="viewStoriesBtn"></button>
+      </div>
     </div>
   </div>
 
   <script>
-    function normId(s){ return String(s||"").toLowerCase().replace(/\s+/g,""); }
+    function normId(s){
+      return String(s || "").toLowerCase().replace(/\s+/g, "");
+    }
+
+    const UI = {
+      en: {
+        welcomeTitle: "Welcome",
+        welcomeSubtitle: "Please tell us a little about yourself.",
+        labelName: "First name",
+        labelAge: "Age",
+        labelLang: "Language",
+        namePlaceholder: "For example: Shanta",
+        agePlaceholder: "For example: 67",
+        continueBtn: "Continue",
+        myStories: "My Stories",
+        homeTitle: "How would you like to begin?",
+        homeSubtitle: "Choose one option.",
+        haveStoryTitle: "I have a story",
+        haveStorySub: "Start telling your story in your own way.",
+        wantTopicTitle: "I want a topic",
+        wantTopicSub: "Choose a prompt and then tell your story.",
+        topicTitle: "Choose a prompt",
+        topicSubtitle: "Look through the cards and choose one if you like it.",
+        prevBtn: "Previous",
+        nextBtn: "Next",
+        selectPromptBtn: "Select this prompt",
+        backHomeBtn: "Back",
+        agentLabel: "Kahani says",
+        hearBtn: "Hear this",
+        micHint: "Tap the microphone and speak. You can also type below.",
+        micListening: "Listening... tap the microphone again to stop.",
+        micUnsupported: "Microphone is not supported in this browser.",
+        micBlocked: "Microphone permission is blocked. You can type instead.",
+        typingToggleOpen: "Type instead",
+        typingToggleClose: "Hide typing",
+        typePlaceholder: "Type your story here",
+        sendTypedBtn: "Send",
+        homeBtnStory: "Home",
+        finishStoryBtn: "Finish Story",
+        reviewTitle: "Story Preview",
+        reviewSubtitle: "Please read your story.",
+        saveBtn: "Save",
+        editBtn: "Edit",
+        successTitle: "Saved",
+        successSubtitle: "Thank you for sharing your story.",
+        anotherStoryBtn: "Make another story",
+        viewStoriesBtn: "View My Stories",
+        topicChip: "Prompt",
+        loading: "...",
+        connectError: "Could not connect to the server.",
+        saveProfileError: "Please enter your first name and age.",
+        topicCount: (i, n) => `Card ${i} of ${n}`,
+      },
+      hi: {
+        welcomeTitle: "स्वागत है",
+        welcomeSubtitle: "कृपया अपनी थोड़ी जानकारी दें।",
+        labelName: "पहला नाम",
+        labelAge: "उम्र",
+        labelLang: "भाषा",
+        namePlaceholder: "जैसे: शांता",
+        agePlaceholder: "जैसे: 67",
+        continueBtn: "आगे बढ़ें",
+        myStories: "मेरी कहानियाँ",
+        homeTitle: "आप कैसे शुरू करना चाहेंगे?",
+        homeSubtitle: "एक विकल्प चुनिए।",
+        haveStoryTitle: "मेरे पास एक कहानी है",
+        haveStorySub: "अपनी कहानी अपने तरीके से शुरू करें।",
+        wantTopicTitle: "मुझे एक विषय चाहिए",
+        wantTopicSub: "एक प्रॉम्प्ट चुनिए और फिर कहानी सुनाइए।",
+        topicTitle: "एक प्रॉम्प्ट चुनिए",
+        topicSubtitle: "कार्ड देखिए और जो पसंद आए उसे चुनिए।",
+        prevBtn: "पिछला",
+        nextBtn: "अगला",
+        selectPromptBtn: "यह प्रॉम्प्ट चुनें",
+        backHomeBtn: "वापस",
+        agentLabel: "कहानी कहता है",
+        hearBtn: "सुनिए",
+        micHint: "माइक दबाइए और बोलिए। चाहें तो नीचे टाइप भी कर सकते हैं।",
+        micListening: "सुन रहा है... रोकने के लिए माइक फिर दबाइए।",
+        micUnsupported: "इस ब्राउज़र में माइक उपलब्ध नहीं है।",
+        micBlocked: "माइक की अनुमति नहीं मिली। आप टाइप कर सकते हैं।",
+        typingToggleOpen: "टाइप करें",
+        typingToggleClose: "टाइपिंग छिपाएँ",
+        typePlaceholder: "अपनी कहानी यहाँ लिखें",
+        sendTypedBtn: "भेजें",
+        homeBtnStory: "होम",
+        finishStoryBtn: "कहानी पूरी करें",
+        reviewTitle: "कहानी का ड्राफ्ट",
+        reviewSubtitle: "कृपया अपनी कहानी पढ़ें।",
+        saveBtn: "सेव करें",
+        editBtn: "बदलें",
+        successTitle: "सेव हो गया",
+        successSubtitle: "अपनी कहानी साझा करने के लिए धन्यवाद।",
+        anotherStoryBtn: "एक और कहानी बनाएँ",
+        viewStoriesBtn: "मेरी कहानियाँ देखें",
+        topicChip: "प्रॉम्प्ट",
+        loading: "...",
+        connectError: "सर्वर से जुड़ नहीं सके।",
+        saveProfileError: "कृपया अपना पहला नाम और उम्र लिखें।",
+        topicCount: (i, n) => `कार्ड ${i} / ${n}`,
+      },
+      gu: {
+        welcomeTitle: "સ્વાગત છે",
+        welcomeSubtitle: "કૃપા કરીને તમારી થોડી માહિતી આપો.",
+        labelName: "પહેલું નામ",
+        labelAge: "ઉંમર",
+        labelLang: "ભાષા",
+        namePlaceholder: "ઉદાહરણ: શાંતા",
+        agePlaceholder: "ઉદાહરણ: 67",
+        continueBtn: "આગળ વધો",
+        myStories: "મારી વાર્તાઓ",
+        homeTitle: "તમે કેવી રીતે શરૂ કરવા માંગો છો?",
+        homeSubtitle: "એક વિકલ્પ પસંદ કરો.",
+        haveStoryTitle: "મારી પાસે વાર્તા છે",
+        haveStorySub: "તમારી વાર્તા તમારા રીતે શરૂ કરો.",
+        wantTopicTitle: "મને એક વિષય જોઈએ",
+        wantTopicSub: "એક પ્રોમ્પ્ટ પસંદ કરો અને પછી વાર્તા કહો.",
+        topicTitle: "એક પ્રોમ્પ્ટ પસંદ કરો",
+        topicSubtitle: "કાર્ડ જુઓ અને ગમે તો પસંદ કરો.",
+        prevBtn: "પાછળ",
+        nextBtn: "આગળ",
+        selectPromptBtn: "આ પ્રોમ્પ્ટ પસંદ કરો",
+        backHomeBtn: "પાછા",
+        agentLabel: "કહાની કહે છે",
+        hearBtn: "સાંભળો",
+        micHint: "માઈક દબાવો અને બોલો. ઇચ્છો તો નીચે ટાઇપ પણ કરી શકો.",
+        micListening: "સાંભળી રહ્યું છે... રોકવા માટે માઈક ફરી દબાવો.",
+        micUnsupported: "આ બ્રાઉઝરમાં માઈક ઉપલબ્ધ નથી.",
+        micBlocked: "માઈકની પરવાનગી મળી નથી. તમે ટાઇપ કરી શકો છો.",
+        typingToggleOpen: "ટાઇપ કરો",
+        typingToggleClose: "ટાઇપિંગ છુપાવો",
+        typePlaceholder: "તમારી વાર્તા અહીં લખો",
+        sendTypedBtn: "મોકલો",
+        homeBtnStory: "હોમ",
+        finishStoryBtn: "વાર્તા પૂરી કરો",
+        reviewTitle: "વાર્તાનો ડ્રાફ્ટ",
+        reviewSubtitle: "કૃપા કરીને તમારી વાર્તા વાંચો.",
+        saveBtn: "સેવ કરો",
+        editBtn: "ફેરફાર કરો",
+        successTitle: "સેવ થઈ ગયું",
+        successSubtitle: "તમારી વાર્તા શેર કરવા બદલ આભાર.",
+        anotherStoryBtn: "બીજી વાર્તા બનાવો",
+        viewStoriesBtn: "મારી વાર્તાઓ જુઓ",
+        topicChip: "પ્રોમ્પ્ટ",
+        loading: "...",
+        connectError: "સર્વર સાથે જોડાઈ શક્યા નથી.",
+        saveProfileError: "કૃપા કરીને તમારું નામ અને ઉંમર લખો.",
+        topicCount: (i, n) => `કાર્ડ ${i} / ${n}`,
+      }
+    };
 
     const state = {
-      userId: null,
-      firstName: null,
-      age: null,
+      userId: "",
+      firstName: "",
+      age: "",
       lang: "hi",
       busy: false,
-      lastStoryText: "",
       seedPrompt: "",
-      cards: [
-        // Simple starter prompts (replace later with full MANAN deck)
-        { hi:"जब मैं छोटा/छोटी थी…", gu:"જ્યારે હું નાનો/નાની હતો…", en:"When I was younger…" },
-        { hi:"मेरी सबसे प्यारी याद…", gu:"મારી સૌથી ગમતી યાદ…", en:"A memory I love…" },
-        { hi:"एक ऐसा दिन जो मैं नहीं भूलता/भूलती…", gu:"એક એવો દિવસ જે હું ભૂલતો/ભૂલતી નથી…", en:"A day I never forget…" },
-        { hi:"मेरे स्कूल का एक किस्सा…", gu:"મારા શાળાનો એક કિસ્સો…", en:"A story from my school…" },
-        { hi:"किसी ने जो बात मुझे याद रह गई…", gu:"કોઈએ કહ્યું એવું જે યાદ રહી ગયું…", en:"Something someone said that stayed with me…" }
-      ]
+      cards: [],
+      cardIndex: 0,
+      typingOpen: false,
+      lastServerData: null,
+      currentScreen: "screenWelcome"
     };
 
     const els = {
-      subtitle: document.getElementById("subtitle"),
-      whoPill: document.getElementById("whoPill"),
+      topbar: document.getElementById("topbar"),
+      namePill: document.getElementById("namePill"),
       storiesBtn: document.getElementById("storiesBtn"),
-      newBtn: document.getElementById("newBtn"),
-
-      screenWelcome: document.getElementById("screenWelcome"),
-      screenBuilder: document.getElementById("screenBuilder"),
-      screenReview: document.getElementById("screenReview"),
-      screenSuccess: document.getElementById("screenSuccess"),
-
       firstName: document.getElementById("firstName"),
       age: document.getElementById("age"),
       lang: document.getElementById("lang"),
-
-      promptBig: document.getElementById("promptBig"),
-      themePill: document.getElementById("themePill"),
-
-      storyToggle: document.getElementById("storyToggle"),
-      storyPanel: document.getElementById("storyPanel"),
-      storyBox: document.getElementById("storyBox"),
-
-      typeArea: document.getElementById("typeArea"),
-      typeToggle: document.getElementById("typeToggle"),
-      typeInput: document.getElementById("typeInput"),
-      sendTypedBtn: document.getElementById("sendTypedBtn"),
-
+      screenWelcome: document.getElementById("screenWelcome"),
+      screenHome: document.getElementById("screenHome"),
+      screenTopics: document.getElementById("screenTopics"),
+      screenStory: document.getElementById("screenStory"),
+      screenReview: document.getElementById("screenReview"),
+      screenSuccess: document.getElementById("screenSuccess"),
+      topicCard: document.getElementById("topicCard"),
+      topicCount: document.getElementById("topicCount"),
+      promptChip: document.getElementById("promptChip"),
+      agentText: document.getElementById("agentText"),
       micBtn: document.getElementById("micBtn"),
       micHint: document.getElementById("micHint"),
-
+      typingArea: document.getElementById("typingArea"),
+      typeInput: document.getElementById("typeInput"),
       draftBox: document.getElementById("draftBox"),
-      successMsg: document.getElementById("successMsg"),
-      doneBtn: document.getElementById("doneBtn"),
-      cardsBtn: document.getElementById("cardsBtn"),
     };
 
+    function t(){
+      return UI[state.lang] || UI.en;
+    }
+
     function showScreen(id){
-      ["screenWelcome","screenBuilder","screenReview","screenSuccess"].forEach(k=>{
-        document.getElementById(k).classList.remove("active");
+      ["screenWelcome","screenHome","screenTopics","screenStory","screenReview","screenSuccess"].forEach((screenId) => {
+        document.getElementById(screenId).classList.remove("active");
       });
       document.getElementById(id).classList.add("active");
+      state.currentScreen = id;
     }
 
     function setBusy(on){
       state.busy = !!on;
-      els.sendTypedBtn.disabled = state.busy;
-      els.doneBtn.disabled = state.busy;
-      els.typeToggle.disabled = state.busy;
-      els.micBtn.disabled = state.busy;
-      els.storyToggle.disabled = state.busy;
-      els.cardsBtn.disabled = state.busy;
+      document.querySelectorAll("button").forEach((btn) => {
+        if (btn.id !== "storiesBtn") btn.disabled = state.busy;
+      });
+      els.storiesBtn.disabled = !state.userId;
     }
 
-    function loadProfile(){
-      const raw = localStorage.getItem("kahanibot_profile_v2");
-      if (!raw) return false;
-      try{
-        const p = JSON.parse(raw);
-        state.userId = p.userId;
-        state.firstName = p.firstName;
-        state.age = p.age;
-        state.lang = p.lang || "hi";
-        return true;
-      }catch{ return false; }
-    }
-
-    function initAfterProfile(){
-      els.whoPill.style.display = "block";
-      els.whoPill.textContent = state.firstName;
-      els.storiesBtn.style.display = "inline-block";
-      els.newBtn.style.display = "inline-block";
-      els.subtitle.textContent = "Speak freely. The agent will guide you.";
-      els.lang.value = state.lang;
+    function applyUIText(){
+      const s = t();
+      document.documentElement.lang = state.lang;
+      document.getElementById("welcomeTitle").textContent = s.welcomeTitle;
+      document.getElementById("welcomeSubtitle").textContent = s.welcomeSubtitle;
+      document.getElementById("labelName").textContent = s.labelName;
+      document.getElementById("labelAge").textContent = s.labelAge;
+      document.getElementById("labelLang").textContent = s.labelLang;
+      els.firstName.placeholder = s.namePlaceholder;
+      els.age.placeholder = s.agePlaceholder;
+      document.getElementById("continueBtn").textContent = s.continueBtn;
+      els.storiesBtn.textContent = s.myStories;
+      document.getElementById("homeTitle").textContent = s.homeTitle;
+      document.getElementById("homeSubtitle").textContent = s.homeSubtitle;
+      document.getElementById("haveStoryTitle").textContent = s.haveStoryTitle;
+      document.getElementById("haveStorySub").textContent = s.haveStorySub;
+      document.getElementById("wantTopicTitle").textContent = s.wantTopicTitle;
+      document.getElementById("wantTopicSub").textContent = s.wantTopicSub;
+      document.getElementById("topicTitle").textContent = s.topicTitle;
+      document.getElementById("topicSubtitle").textContent = s.topicSubtitle;
+      document.getElementById("prevBtn").textContent = s.prevBtn;
+      document.getElementById("nextBtn").textContent = s.nextBtn;
+      document.getElementById("selectPromptBtn").textContent = s.selectPromptBtn;
+      document.getElementById("backHomeBtn").textContent = s.backHomeBtn;
+      document.getElementById("agentLabel").textContent = s.agentLabel;
+      document.getElementById("hearBtn").textContent = s.hearBtn;
+      document.getElementById("typingToggleBtn").textContent = state.typingOpen ? s.typingToggleClose : s.typingToggleOpen;
+      els.typeInput.placeholder = s.typePlaceholder;
+      document.getElementById("sendTypedBtn").textContent = s.sendTypedBtn;
+      document.getElementById("homeBtnStory").textContent = s.homeBtnStory;
+      document.getElementById("finishStoryBtn").textContent = s.finishStoryBtn;
+      document.getElementById("reviewTitle").textContent = s.reviewTitle;
+      document.getElementById("reviewSubtitle").textContent = s.reviewSubtitle;
+      document.getElementById("saveBtn").textContent = s.saveBtn;
+      document.getElementById("editBtn").textContent = s.editBtn;
+      document.getElementById("successTitle").textContent = s.successTitle;
+      document.getElementById("successSubtitle").textContent = s.successSubtitle;
+      document.getElementById("anotherStoryBtn").textContent = s.anotherStoryBtn;
+      document.getElementById("viewStoriesBtn").textContent = s.viewStoriesBtn;
+      if (!listening) {
+        els.micHint.textContent = SpeechRecognition ? s.micHint : s.micUnsupported;
+      }
+      renderTopicCard();
+      renderPromptChip();
     }
 
     function saveProfile(){
-      const fn = String(els.firstName.value||"").trim();
-      const age = String(els.age.value||"").trim();
+      const firstName = String(els.firstName.value || "").trim();
+      const age = String(els.age.value || "").trim();
       const lang = els.lang.value;
 
-      if (!fn || !age){
-        alert("Please enter first name and age.");
+      if (!firstName || !age){
+        alert((UI[lang] || UI.en).saveProfileError);
         return;
       }
 
-      const userId = normId(fn) + age; // e.g., shanta67
-
-      state.userId = userId;
-      state.firstName = fn;
+      state.firstName = firstName;
       state.age = age;
       state.lang = lang;
+      state.userId = normId(firstName) + age;
 
-      localStorage.setItem("kahanibot_profile_v2", JSON.stringify({
-        userId, firstName: fn, age, lang
+      localStorage.setItem("kahanibot_profile_v3", JSON.stringify({
+        firstName: state.firstName,
+        age: state.age,
+        lang: state.lang,
+        userId: state.userId,
       }));
 
       initAfterProfile();
-      startNewStory();
+      goHome();
+    }
+
+    function loadProfile(){
+      const raw = localStorage.getItem("kahanibot_profile_v3") || localStorage.getItem("kahanibot_profile_v2");
+      if (!raw) return false;
+      try{
+        const p = JSON.parse(raw);
+        state.firstName = p.firstName || "";
+        state.age = p.age || "";
+        state.lang = p.lang || "hi";
+        state.userId = p.userId || (normId(state.firstName) + state.age);
+        return !!state.userId;
+      } catch {
+        return false;
+      }
+    }
+
+    function initAfterProfile(){
+      els.topbar.classList.add("show");
+      els.namePill.textContent = state.firstName;
+      els.lang.value = state.lang;
+      applyUIText();
+      loadCards();
+    }
+
+    function goHome(){
+      showScreen("screenHome");
+      stopSpeaking();
+      if (recognition && listening) recognition.stop();
+    }
+
+    async function loadCards(){
+      try{
+        const res = await fetch("/cards/manan_cards.json");
+        const data = await res.json();
+        state.cards = Array.isArray(data) ? data : [];
+      } catch {
+        state.cards = [];
+      }
+      renderTopicCard();
+    }
+
+    function renderTopicCard(){
+      if (!els.topicCard) return;
+      if (!state.cards.length){
+        els.topicCard.textContent = "...";
+        els.topicCount.textContent = "";
+        return;
+      }
+      if (state.cardIndex < 0) state.cardIndex = 0;
+      if (state.cardIndex >= state.cards.length) state.cardIndex = state.cards.length - 1;
+      const card = state.cards[state.cardIndex] || {};
+      const text = card[state.lang] || card.en || card.hi || card.gu || "";
+      els.topicCard.textContent = text;
+      els.topicCount.textContent = t().topicCount(state.cardIndex + 1, state.cards.length);
+    }
+
+    function prevCard(){
+      if (!state.cards.length) return;
+      state.cardIndex = (state.cardIndex - 1 + state.cards.length) % state.cards.length;
+      renderTopicCard();
+    }
+
+    function nextCard(){
+      if (!state.cards.length) return;
+      state.cardIndex = (state.cardIndex + 1) % state.cards.length;
+      renderTopicCard();
+    }
+
+    function currentCardText(){
+      if (!state.cards.length) return "";
+      const card = state.cards[state.cardIndex] || {};
+      return String(card[state.lang] || card.en || card.hi || card.gu || "").trim();
+    }
+
+    function renderPromptChip(){
+      if (!state.seedPrompt){
+        els.promptChip.style.display = "none";
+        els.promptChip.textContent = "";
+        return;
+      }
+      els.promptChip.style.display = "block";
+      els.promptChip.textContent = `${t().topicChip}: ${state.seedPrompt}`;
     }
 
     function openStories(){
@@ -549,240 +841,192 @@
       window.open(`/u/${encodeURIComponent(state.userId)}`, "_blank");
     }
 
-    function setStorySoFar(storyText){
-      const t = String(storyText || "");
-      state.lastStoryText = t;
-      els.storyBox.textContent = t;
-      els.storyBox.scrollTop = els.storyBox.scrollHeight;
-    }
-
-    function setThemePill(seed){
-      const s = String(seed || "").trim();
-      state.seedPrompt = s;
-      if (!s){
-        els.themePill.style.display = "none";
-        els.themePill.textContent = "";
-        return;
-      }
-      els.themePill.style.display = "block";
-      els.themePill.textContent = "Prompt: " + s;
-    }
-
-    function langToSpeechLocale(lang){
-      if (lang === "hi") return "hi-IN";
-      if (lang === "gu") return "gu-IN";
-      return "en-US";
-    }
-
     async function apiTurn(text, seedPrompt){
-  const body = {
-    user_id: state.userId,
-    text: String(text || ""),
-    lang: state.lang
-  };
-
-  // Always send the active theme if we have one
-  const active = (seedPrompt !== undefined) ? seedPrompt : state.seedPrompt;
-  if (active !== undefined && String(active).trim() !== "") {
-    body.seed_prompt = String(active);
-  }
-
-  const res = await fetch("/api/turn", {
-    method:"POST",
-    headers:{ "Content-Type":"application/json" },
-    body: JSON.stringify(body)
-  });
-
-  const data = await res.json();
-  if (!data || data.error) throw new Error(data?.error || "Server error");
-  return data;
-}
-
-    function renderFromServer(data){
-      if (data.seed_prompt !== undefined) {
-        setThemePill(data.seed_prompt);
+      const body = {
+        user_id: state.userId,
+        text: String(text || ""),
+        lang: state.lang,
+      };
+      if (seedPrompt !== undefined && String(seedPrompt || "").trim() !== "") {
+        body.seed_prompt = String(seedPrompt).trim();
       }
+      const res = await fetch("/api/turn", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (!data || data.error) throw new Error(data?.error || "Server error");
+      state.lastServerData = data;
+      return data;
+    }
 
-      if (data.story_so_far !== undefined) {
-        setStorySoFar(data.story_so_far);
+    function renderServerData(data){
+      if (!data) return;
+      if (data.seed_prompt !== undefined) {
+        state.seedPrompt = String(data.seed_prompt || "").trim();
+        renderPromptChip();
       }
 
       if (data.screen === "BUILD") {
-        els.promptBig.textContent = data.agent_prompt || "";
-        showScreen("screenBuilder");
+        els.agentText.textContent = data.agent_prompt || t().loading;
+        showScreen("screenStory");
         return;
       }
 
       if (data.screen === "REVIEW") {
         const title = data.draft?.title ? data.draft.title : "";
-        const body  = data.draft?.body  ? data.draft.body  : "";
-        els.draftBox.textContent = (title ? title + "\n\n" : "") + body;
+        const body = data.draft?.body ? data.draft.body : "";
+        els.draftBox.textContent = title ? `${title}\n\n${body}` : body;
         showScreen("screenReview");
         return;
       }
 
       if (data.screen === "SUCCESS") {
-        els.successMsg.textContent = data.agent_prompt || "Saved. Thank you for sharing.";
         showScreen("screenSuccess");
         return;
       }
 
-      // fallback
-      els.promptBig.textContent = data.agent_prompt || "";
-      showScreen("screenBuilder");
+      els.agentText.textContent = data.agent_prompt || t().loading;
+      showScreen("screenStory");
     }
 
-    async function syncOnLoad(){
-      try{
+    async function beginStoryMode(){
+      stopSpeaking();
+      state.seedPrompt = "";
+      renderPromptChip();
+      els.agentText.textContent = t().loading;
+      showScreen("screenStory");
+      try {
         setBusy(true);
-        const data = await apiTurn("");
-        renderFromServer(data);
-      } catch(e){
-        els.promptBig.textContent = "Could not connect to server.";
-        showScreen("screenBuilder");
+        await apiTurn("RESET");
+        const data = await apiTurn("1");
+        renderServerData(data);
+      } catch {
+        els.agentText.textContent = t().connectError;
       } finally {
         setBusy(false);
       }
     }
 
-    async function sendChunk(userText){
-      const t = String(userText||"").trim();
-      if (!t) return;
+    function goToTopics(){
+      stopSpeaking();
+      renderTopicCard();
+      showScreen("screenTopics");
+    }
 
-      try{
+    async function selectPrompt(){
+      const prompt = currentCardText();
+      if (!prompt) return;
+      stopSpeaking();
+      state.seedPrompt = prompt;
+      renderPromptChip();
+      els.agentText.textContent = t().loading;
+      showScreen("screenStory");
+      try {
         setBusy(true);
-        els.promptBig.textContent = "…";
-        const data = await apiTurn(t);
-        renderFromServer(data);
-      } catch(e){
-        els.promptBig.textContent = "Server error. Please try again.";
+        await apiTurn("RESET");
+        await apiTurn("", prompt);
+        const data = await apiTurn("YES");
+        renderServerData(data);
+      } catch {
+        els.agentText.textContent = t().connectError;
       } finally {
         setBusy(false);
       }
     }
 
-    async function startNewStory(){
-      const current = (state.lastStoryText || "").trim();
-
-      showScreen("screenBuilder");
-      els.promptBig.textContent = "…";
-      setStorySoFar("");
-      setThemePill("");
-
-      try{
+    async function sendChunk(text){
+      const message = String(text || "").trim();
+      if (!message) return;
+      stopSpeaking();
+      try {
         setBusy(true);
-
-        // Reset story on backend if needed
-        if (current.length > 0) {
-          await apiTurn("DONE");
-          await apiTurn("NO");
-        }
-
-        // Clear theme on backend
-        await apiTurn("", "");
-
-        const data = await apiTurn("");
-        renderFromServer(data);
-      } catch(e){
-        els.promptBig.textContent = "Could not start a new story.";
+        els.agentText.textContent = t().loading;
+        const data = await apiTurn(message);
+        renderServerData(data);
+      } catch {
+        els.agentText.textContent = t().connectError;
       } finally {
         setBusy(false);
       }
-    }
-
-    async function endStory(){
-      await sendChunk("DONE");
-    }
-
-    async function saveStoryYes(){
-      await sendChunk("YES");
-    }
-
-    async function reviseStory(){
-      await sendChunk("NO");
-    }
-
-    // Typing UI
-    function toggleTyping(){
-      const open = els.typeArea.classList.toggle("open");
-      els.typeToggle.textContent = open ? "Hide typing" : "Type";
-      if (open) setTimeout(()=>els.typeInput.focus(), 50);
     }
 
     async function sendTyped(){
-      const t = els.typeInput.value.trim();
-      if (!t) return;
+      const value = String(els.typeInput.value || "").trim();
+      if (!value) return;
       els.typeInput.value = "";
-      await sendChunk(t);
+      await sendChunk(value);
     }
 
-    els.typeInput.addEventListener("keydown", (e)=>{
-      if (e.key === "Enter"){
-        e.preventDefault();
-        sendTyped();
-      }
-    });
-
-    // Story panel
-    function toggleStoryPanel(){
-      const open = els.storyPanel.classList.toggle("open");
-      els.storyToggle.textContent = open ? "Hide story" : "Show story";
-      if (open) {
-        els.storyBox.scrollTop = els.storyBox.scrollHeight;
+    function toggleTyping(){
+      state.typingOpen = !state.typingOpen;
+      els.typingArea.classList.toggle("hidden", !state.typingOpen);
+      applyUIText();
+      if (state.typingOpen) {
+        setTimeout(() => els.typeInput.focus(), 50);
       }
     }
 
-    // Cards (theme only)
-    async function pickCard(){
-  const pack = state.cards;
-  const c = pack[Math.floor(Math.random() * pack.length)];
-  const prompt = (c && (c[state.lang] || c.en)) || "";
-  if (!prompt) return;
+    async function finishStory(){
+      await sendChunk("DONE");
+    }
 
-  try{
-    setBusy(true);
+    async function saveStory(){
+      await sendChunk("YES");
+    }
 
-    // store the MANAN prompt locally
-    state.seedPrompt = prompt;
+    async function editStory(){
+      await sendChunk("NO");
+    }
 
-    // show it in the UI
-    els.themePill.textContent = "Prompt: " + prompt;
+    function langToLocale(lang){
+      if (lang === "hi") return "hi-IN";
+      if (lang === "gu") return "gu-IN";
+      return "en-IN";
+    }
 
-    // guide the user instead of calling the server
-    els.promptBig.textContent = "Share a story related to this prompt.";
+    function speakAgentText(){
+      const text = String(els.agentText.textContent || "").trim();
+      if (!text || !("speechSynthesis" in window)) return;
+      stopSpeaking();
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = langToLocale(state.lang);
+      window.speechSynthesis.speak(utterance);
+    }
 
-  } catch(e){
-    els.promptBig.textContent = "Could not set prompt. Please try again.";
-  } finally {
-    setBusy(false);
-  }
-}
+    function stopSpeaking(){
+      if ("speechSynthesis" in window) {
+        window.speechSynthesis.cancel();
+      }
+    }
 
-    // Speech to text
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     let recognition = null;
     let listening = false;
 
-    if (SpeechRecognition){
+    if (SpeechRecognition) {
       recognition = new SpeechRecognition();
       recognition.interimResults = false;
       recognition.continuous = true;
       recognition.maxAlternatives = 1;
 
-      recognition.onstart = ()=>{
+      recognition.onstart = () => {
         listening = true;
         els.micBtn.classList.add("listening");
-        els.micHint.textContent = "Listening… tap mic again to stop";
+        els.micHint.textContent = t().micListening;
       };
 
-      recognition.onend = ()=>{
+      recognition.onend = () => {
         listening = false;
         els.micBtn.classList.remove("listening");
-        els.micHint.textContent = "Tap mic, speak. When finished, tap Done.";
+        els.micHint.textContent = t().micHint;
       };
 
-      recognition.onerror = ()=>{
-        els.promptBig.textContent = "Mic permission blocked. Try HTTPS (Render) or use typing.";
+      recognition.onerror = () => {
+        els.micBtn.classList.remove("listening");
+        listening = false;
+        els.micHint.textContent = t().micBlocked;
       };
 
       recognition.onresult = async (event) => {
@@ -792,52 +1036,79 @@
         }
         const chunk = fullText.trim();
         if (!chunk) return;
-
         if (chunk.toLowerCase() === "done") {
           recognition.stop();
-          await sendChunk("DONE");
+          await finishStory();
           return;
         }
-
         await sendChunk(chunk);
       };
-    } else {
-      els.micHint.textContent = "Mic not supported in this browser.";
     }
 
     function toggleMic(){
-      if (!recognition) return;
-      if (state.busy) return;
-
-      if (listening){
+      if (!recognition || state.busy) return;
+      if (listening) {
         recognition.stop();
         return;
       }
-      recognition.lang = langToSpeechLocale(state.lang);
-      try{ recognition.start(); } catch(e){}
+      recognition.lang = langToLocale(state.lang);
+      try {
+        recognition.start();
+      } catch {}
     }
 
-    // Init
-    if (loadProfile()){
-      initAfterProfile();
-      showScreen("screenBuilder");
-      syncOnLoad();
-    } else {
-      showScreen("screenWelcome");
+    els.typeInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        sendTyped();
+      }
+    });
+
+    let touchStartX = 0;
+    let touchEndX = 0;
+    els.topicCard.addEventListener("touchstart", (e) => {
+      touchStartX = e.changedTouches[0].screenX;
+    }, { passive: true });
+    els.topicCard.addEventListener("touchend", (e) => {
+      touchEndX = e.changedTouches[0].screenX;
+      const diff = touchEndX - touchStartX;
+      if (Math.abs(diff) < 40) return;
+      if (diff > 0) prevCard();
+      if (diff < 0) nextCard();
+    }, { passive: true });
+
+    els.lang.addEventListener("change", () => {
+      state.lang = els.lang.value;
+      applyUIText();
+    });
+
+    function init(){
+      if (loadProfile()) {
+        initAfterProfile();
+        goHome();
+      } else {
+        applyUIText();
+        showScreen("screenWelcome");
+      }
     }
 
-    // Expose to buttons
+    init();
+
     window.saveProfile = saveProfile;
     window.openStories = openStories;
-    window.startNewStory = startNewStory;
+    window.beginStoryMode = beginStoryMode;
+    window.goToTopics = goToTopics;
+    window.prevCard = prevCard;
+    window.nextCard = nextCard;
+    window.selectPrompt = selectPrompt;
     window.toggleTyping = toggleTyping;
     window.sendTyped = sendTyped;
-    window.toggleStoryPanel = toggleStoryPanel;
+    window.finishStory = finishStory;
+    window.saveStory = saveStory;
+    window.editStory = editStory;
+    window.goHome = goHome;
     window.toggleMic = toggleMic;
-    window.endStory = endStory;
-    window.saveStoryYes = saveStoryYes;
-    window.reviseStory = reviseStory;
-    window.pickCard = pickCard;
+    window.speakAgentText = speakAgentText;
   </script>
 </body>
 </html>

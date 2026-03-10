@@ -29,6 +29,26 @@ function formatDate(iso) {
   }
 }
 
+async function sendWhatsAppText(to, text) {
+  const res = await fetch("https://www.wasenderapi.com/api/send-message", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${process.env.WASENDER_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ to, text }),
+  });
+
+  const data = await res.json().catch(() => null);
+  console.log("Wasender send response:", data);
+
+  if (!res.ok) {
+    throw new Error(`Wasender send failed with status ${res.status}`);
+  }
+
+  return data;
+}
+
 // Health
 app.get("/health", (req, res) => res.status(200).send("OK"));
 
@@ -147,19 +167,23 @@ app.post("/webhook", async (req, res) => {
 
     const msg = req.body?.data?.messages;
     if (!msg) return;
+    if (msg?.key?.fromMe) return;
 
     const text = msg.messageBody;
-    const from = msg.remoteJid;
+    const to = msg?.key?.cleanedSenderPn;
 
-    if (!text || !from) return;
+    if (!text || !to) return;
 
     const reply = await convo.handleMessage({
-      from,
+      from: msg.remoteJid,
       text,
     });
 
     console.log("Bot reply:", reply);
 
+    if (reply) {
+      await sendWhatsAppText(to, reply);
+    }
   } catch (err) {
     console.error("Webhook error:", err);
   }

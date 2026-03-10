@@ -135,5 +135,21 @@ app.get("/u/:userId", async (req, res) => {
   }
 });
 
+// WhatsApp webhook test route
+app.post("/webhook", async (req, res) => {
+  try {
+    console.log("Webhook received:");
+    console.log(JSON.stringify(req.body, null, 2));
+
+    return res.status(200).json({
+      ok: true,
+      message: "Webhook received"
+    });
+  } catch (err) {
+    console.error("Error in /webhook:", err);
+    return res.status(500).json({ error: "Webhook server error" });
+  }
+});
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));

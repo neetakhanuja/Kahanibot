@@ -37,7 +37,7 @@ app.get("/app", (req, res) => {
   res.sendFile(path.resolve("public", "index.html"));
 });
 
-// ✅ DST Builder API endpoint
+// DST Builder API endpoint
 app.post("/api/turn", async (req, res) => {
   try {
     const { user_id, text, lang, seed_prompt } = req.body || {};
@@ -54,7 +54,6 @@ app.post("/api/turn", async (req, res) => {
         seed_prompt !== undefined ? String(seed_prompt) : undefined,
     });
 
-    // IMPORTANT: return full object
     return res.json(out);
   } catch (err) {
     console.error("Error in /api/turn:", err);
@@ -135,19 +134,34 @@ app.get("/u/:userId", async (req, res) => {
   }
 });
 
-// WhatsApp webhook test route
+// WhatsApp webhook
 app.post("/webhook", async (req, res) => {
   try {
     console.log("Webhook received:");
     console.log(JSON.stringify(req.body, null, 2));
 
-    return res.status(200).json({
-      ok: true,
-      message: "Webhook received"
+    res.status(200).json({ ok: true });
+
+    const event = req.body?.event;
+    if (event !== "messages.received") return;
+
+    const msg = req.body?.data?.messages;
+    if (!msg) return;
+
+    const text = msg.messageBody;
+    const from = msg.remoteJid;
+
+    if (!text || !from) return;
+
+    const reply = await convo.handleMessage({
+      from,
+      text,
     });
+
+    console.log("Bot reply:", reply);
+
   } catch (err) {
-    console.error("Error in /webhook:", err);
-    return res.status(500).json({ error: "Webhook server error" });
+    console.error("Webhook error:", err);
   }
 });
 

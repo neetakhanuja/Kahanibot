@@ -1,5 +1,5 @@
 // src/ai.js
-// Minimal OpenAI wrapper for Kahanibot (reflection + question) + light story polish.
+// KahaniBot AI: empathetic listener + curious story builder
 
 const AI_ENABLED = String(process.env.AI_ENABLED || "").toLowerCase() === "true";
 const AI_MODEL = process.env.AI_MODEL || "gpt-4.1-mini";
@@ -23,6 +23,7 @@ function hardLimitLines(text, maxLines) {
     .split("\n")
     .map((l) => l.trim())
     .filter(Boolean);
+
   return lines.slice(0, maxLines).join("\n");
 }
 
@@ -32,19 +33,19 @@ function pickScaffoldQuestion(lang) {
       "उस समय आपके साथ कौन था?",
       "यह कहाँ हुआ था?",
       "उस पल आपको सबसे ज़्यादा क्या याद है?",
-      "फिर आपने क्या किया?",
-      "अंत में क्या हुआ?",
+      "फिर क्या हुआ?",
+      "उस समय आपको कैसा लगा?",
     ];
     return qs[Math.floor(Math.random() * qs.length)];
   }
 
   if (lang === "gu") {
     const qs = [
-      "તે વખતે તમારી સાથે કોણ હતું?",
-      "આ ક્યા બન્યું હતું?",
-      "આ પળમાંથી તમને સૌથી વધુ શું યાદ છે?",
-      "પછી તમે શું કર્યું?",
-      "અંતમાં શું થયું?",
+      "તે સમયે તમારી સાથે કોણ હતું?",
+      "આ ક્યાં બન્યું હતું?",
+      "તમને તે પળમાંથી સૌથી વધુ શું યાદ છે?",
+      "પછી શું થયું?",
+      "તે સમયે તમને કેવું લાગ્યું?",
     ];
     return qs[Math.floor(Math.random() * qs.length)];
   }
@@ -53,8 +54,8 @@ function pickScaffoldQuestion(lang) {
     "Who was with you then?",
     "Where did this happen?",
     "What do you remember most from that moment?",
-    "What did you do next?",
-    "How did it end?",
+    "What happened after that?",
+    "How did you feel at that time?",
   ];
   return qs[Math.floor(Math.random() * qs.length)];
 }
@@ -62,27 +63,54 @@ function pickScaffoldQuestion(lang) {
 function isTooGenericQuestion(lang, q) {
   const t = String(q || "").trim().toLowerCase();
 
-  // English
   if (lang === "en") {
-    if (t === "what happened next?" || t === "and what happened next?") return true;
-    if (t === "what happened next") return true;
-    return false;
+    return (
+      t === "what happened next?" ||
+      t === "and what happened next?" ||
+      t === "what happened next" ||
+      t === "can you tell me more?" ||
+      t === "tell me more?" ||
+      t === "would you like to tell me more?"
+    );
   }
 
-  // Hindi
   if (lang === "hi") {
-    if (t === "और क्या हुआ?" || t === "और फिर क्या हुआ?" || t === "और क्या याद आता है?") return true;
-    return false;
+    return (
+      t === "और क्या हुआ?" ||
+      t === "और फिर क्या हुआ?" ||
+      t === "और क्या याद आता है?" ||
+      t === "क्या आप और बताना चाहेंगे?"
+    );
   }
 
-  // Gujarati
   if (lang === "gu") {
-    if (t === "આ પછી શું થયું?" || t === "પછી શું થયું?" || t === "હવે પછી શું થયું?") return true;
-    return false;
+    return (
+      t === "આ પછી શું થયું?" ||
+      t === "પછી શું થયું?" ||
+      t === "હવે પછી શું થયું?" ||
+      t === "શું તમે વધુ કહેશો?"
+    );
   }
 
-  // default
-  return t === "what happened next?" || t === "what happened next";
+  return false;
+}
+
+function cleanAcknowledgment(text, lang) {
+  let out = String(text || "").trim();
+
+  if (!out) {
+    if (lang === "hi") return "यह एक सुंदर याद लगती है।";
+    if (lang === "gu") return "આ એક સુંદર યાદ લાગે છે.";
+    return "That sounds like a meaningful memory.";
+  }
+
+  out = out.replace(/^["'\s]+|["'\s]+$/g, "");
+
+  if (out.length > 120) {
+    out = out.slice(0, 117).trim() + "...";
+  }
+
+  return out;
 }
 
 async function callOpenAI({ system, user, temperature = 0.5 }) {
@@ -121,37 +149,49 @@ async function callOpenAI({ system, user, temperature = 0.5 }) {
 export async function generateReflectionAndQuestion({ lang, story_text }) {
   try {
     const system =
-      `You are a warm and simple storytelling companion for older adults.\n` +
+      `You are KahaniBot, a warm and gentle storytelling companion for older adults in India.\n` +
       `Write in ${langLabel(lang)}.\n\n` +
+      `Your role:\n` +
+      `- Listen with empathy.\n` +
+      `- Respond with curiosity.\n` +
+      `- Help the speaker build a fuller story from a personal memory.\n\n` +
       `Input structure:\n` +
-      `The input may contain these sections:\n` +
-      `Theme: a story topic or prompt.\n` +
-      `Context so far: earlier parts of the story.\n` +
-      `Latest message: the newest part of the story from the user.\n\n` +
-      `Your task:\n` +
-      `- Your acknowledgment MUST respond to the Latest message.\n` +
-      `- If a Theme exists, your question MUST connect to the Theme.\n` +
-      `- Ask one simple open question that moves the story forward.\n\n` +
+      `The input may contain:\n` +
+      `- Theme: an optional story topic.\n` +
+      `- Context so far: earlier parts of the story.\n` +
+      `- Latest message: the newest thing the user has said.\n\n` +
+      `Your job:\n` +
+      `- Acknowledge the Latest message directly.\n` +
+      `- Ask one gentle question that helps the story grow.\n` +
+      `- If a Theme exists, keep the question connected to that Theme.\n` +
+      `- Follow the story naturally instead of asking random questions.\n\n` +
       `Tone rules:\n` +
-      `- Warm but simple.\n` +
-      `- Do not exaggerate emotions.\n` +
-      `- Do not interpret feelings beyond what is said.\n` +
-      `- Use clear plain language.\n\n` +
-      `Conversation rules:\n` +
-      `- No advice.\n` +
-      `- No moral lessons.\n` +
-      `- No assumptions.\n` +
-      `- Ask only one open question.\n` +
-      `- Avoid generic questions like "What happened next?" unless truly needed.\n` +
-      `- Keep responses short.\n\n` +
-      `Output EXACTLY 2 lines:\n` +
-      `Line 1: one short acknowledgment.\n` +
-      `Line 2: one gentle question that connects to the story and the Theme.\n` +
-      `No extra text.`;
+      `- Warm, respectful, and simple.\n` +
+      `- Sound like a patient human listener.\n` +
+      `- Be empathetic, but do not exaggerate emotion.\n` +
+      `- Do not sound like a therapist, interviewer, or teacher.\n` +
+      `- Do not praise too much.\n` +
+      `- Do not give advice.\n` +
+      `- Do not judge.\n` +
+      `- Do not invent details.\n\n` +
+      `Question rules:\n` +
+      `- Ask only one question.\n` +
+      `- Keep it specific.\n` +
+      `- Prefer questions about people, place, time, action, feelings, small details, sequence, or meaning.\n` +
+      `- Avoid generic questions like "What happened next?" unless there is no better option.\n` +
+      `- Do not ask two questions in one line.\n\n` +
+      `Length rules:\n` +
+      `- Keep the whole reply very short.\n` +
+      `- Output exactly 2 lines.\n` +
+      `- Line 1: one short acknowledgment.\n` +
+      `- Line 2: one gentle question.\n` +
+      `- No bullet points.\n` +
+      `- No labels.\n` +
+      `- No extra text.`;
 
-    const user = `Story:\n${story_text}\n\nReturn exactly 2 lines.`;
+    const user = `Story input:\n${story_text}\n\nReturn exactly 2 lines.`;
 
-    const out = await callOpenAI({ system, user, temperature: 0.5 });
+    const out = await callOpenAI({ system, user, temperature: 0.6 });
     if (!out) return null;
 
     const cleaned = hardLimitLines(out, 2);
@@ -160,10 +200,13 @@ export async function generateReflectionAndQuestion({ lang, story_text }) {
       .map((l) => l.trim())
       .filter(Boolean);
 
-    // If we got 2 lines, enforce anti-generic question fallback
     if (lines.length >= 2) {
-      let reflection = lines[0];
-      let question = lines[1];
+      const reflection = cleanAcknowledgment(lines[0], lang || "en");
+      let question = String(lines[1] || "").trim();
+
+      if (!question.endsWith("?") && !question.endsWith("؟")) {
+        question = question.replace(/[.。]+$/g, "").trim() + "?";
+      }
 
       if (isTooGenericQuestion(lang || "en", question)) {
         question = pickScaffoldQuestion(lang || "en");
@@ -176,9 +219,9 @@ export async function generateReflectionAndQuestion({ lang, story_text }) {
       };
     }
 
-    // If we got only one line, add a scaffold question
-    const one = String(out).trim();
+    const one = cleanAcknowledgment(String(out).trim(), lang || "en");
     const q = pickScaffoldQuestion(lang || "en");
+
     return {
       reflection: one,
       question: q,
@@ -198,20 +241,21 @@ export async function polishStory({ lang, story_text }) {
   if (!raw) return null;
 
   const system =
-    `You lightly clean spoken transcripts into a readable short story.\n` +
+    `You lightly clean spoken storytelling into a readable short story.\n` +
     `Write in ${langLabel(lang)}.\n\n` +
     `Strict rules:\n` +
-    `- Keep original wording as much as possible.\n` +
+    `- Keep the speaker's original meaning and wording as much as possible.\n` +
     `- Do NOT add new details.\n` +
     `- Do NOT exaggerate emotions.\n` +
     `- Do NOT add moral lessons.\n` +
     `- Do NOT significantly increase length.\n` +
-    `- Keep sentence structure close to original.\n` +
-    `- Remove clear duplicate lines or repeated fragments.\n` +
-    `- Fix small speech errors only if obvious.\n\n` +
+    `- Keep the story natural and simple.\n` +
+    `- Remove clear repetition or duplicate fragments.\n` +
+    `- Fix only obvious small spoken-language issues.\n` +
+    `- Preserve the personal voice.\n\n` +
     `Return ONLY valid JSON with keys "title" and "body".\n` +
-    `Title: short (max 6 words).\n` +
-    `Body: similar length to transcript.\n`;
+    `Title: short, warm, and simple, max 6 words.\n` +
+    `Body: a lightly cleaned version of the same story.\n`;
 
   const user = `Transcript:\n${raw}\n\nReturn JSON only.`;
 
@@ -229,7 +273,13 @@ export async function polishStory({ lang, story_text }) {
     if (!body) return null;
 
     return {
-      title: title || (lang === "hi" ? "एक कहानी" : lang === "gu" ? "એક વાર્તા" : "A Story"),
+      title:
+        title ||
+        (lang === "hi"
+          ? "एक कहानी"
+          : lang === "gu"
+          ? "એક વાર્તા"
+          : "A Story"),
       body,
     };
   } catch {

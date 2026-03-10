@@ -9,7 +9,7 @@ const app = express();
 
 app.use(express.static("public"));
 app.use("/cards", express.static("cards"));
-app.use(express.json());
+app.use(express.json({ limit: "10mb" }));
 
 function escapeHtml(s) {
   return String(s || "")
@@ -30,13 +30,20 @@ function formatDate(iso) {
 }
 
 async function sendWhatsAppText(to, text) {
+  if (!process.env.WASENDER_API_KEY) {
+    throw new Error("Missing WASENDER_API_KEY");
+  }
+
   const res = await fetch("https://www.wasenderapi.com/api/send-message", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${process.env.WASENDER_API_KEY}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ to, text }),
+    body: JSON.stringify({
+      to: String(to || "").trim(),
+      text: String(text || "").trim(),
+    }),
   });
 
   const data = await res.json().catch(() => null);
@@ -52,15 +59,15 @@ async function sendWhatsAppText(to, text) {
 // Health
 app.get("/health", (req, res) => res.status(200).send("OK"));
 
-// Web App UI
+// Optional web app route
 app.get("/app", (req, res) => {
   res.sendFile(path.resolve("public", "index.html"));
 });
 
-// DST Builder API endpoint
+// Local testing route
 app.post("/api/turn", async (req, res) => {
   try {
-    const { user_id, text, lang, seed_prompt } = req.body || {};
+    const { user_id, text, lang } = req.body || {};
 
     if (!user_id) {
       return res.status(400).json({ error: "Missing user_id" });
@@ -70,8 +77,6 @@ app.post("/api/turn", async (req, res) => {
       user_id: String(user_id),
       text: String(text || ""),
       lang: lang ? String(lang) : undefined,
-      seed_prompt:
-        seed_prompt !== undefined ? String(seed_prompt) : undefined,
     });
 
     return res.json(out);
@@ -104,7 +109,9 @@ app.get("/u/:userId", async (req, res) => {
     const itemsHtml = sorted
       .map((s) => {
         const date = escapeHtml(formatDate(s.created_at));
-        const text = escapeHtml(s.story_text).replaceAll("\n", "<br/>");
+        const title = escapeHtml(s.title || "");
+        const text = escapeHtml(s.story_text || "").replaceAll("\n", "<br/>");
+        const audioUrl = String(s.audio_url || "").trim();
 
         return `
           <article style="
@@ -113,14 +120,28 @@ app.get("/u/:userId", async (req, res) => {
             border-radius:12px;
             padding:16px;
             margin:16px 0;
-            box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+            box-shadow:0 1px 2px rgba(0,0,0,0.04);
           ">
             <div style="color:#666; font-size:13px; margin-bottom:10px;">
               ${date}
             </div>
+            ${
+              title
+                ? `<h2 style="font-size:18px; margin:0 0 10px 0; color:#111;">${title}</h2>`
+                : ""
+            }
             <div style="font-size:16px; line-height:1.7; color:#111;">
               ${text}
             </div>
+            ${
+              audioUrl
+                ? `<div style="margin-top:14px;">
+                    <audio controls preload="none" style="width:100%;">
+                      <source src="${escapeHtml(audioUrl)}" />
+                    </audio>
+                   </div>`
+                : ""
+            }
           </article>
         `;
       })
@@ -134,10 +155,10 @@ app.get("/u/:userId", async (req, res) => {
           <meta name="viewport" content="width=device-width, initial-scale=1" />
           <title>Stories by ${escapeHtml(userId)}</title>
         </head>
-        <body style="font-family: system-ui, Arial; background:#fafafa; color:#111;">
-          <div style="max-width: 780px; margin: 40px auto; padding: 0 16px;">
+        <body style="font-family:system-ui,Arial; background:#fafafa; color:#111;">
+          <div style="max-width:780px; margin:40px auto; padding:0 16px;">
             <h1 style="margin:0 0 8px 0;">Stories by ${escapeHtml(userId)}</h1>
-            <div style="color:#444; margin-bottom: 20px;">
+            <div style="color:#444; margin-bottom:20px;">
               Showing public stories only.
             </div>
             ${itemsHtml}
@@ -147,10 +168,10 @@ app.get("/u/:userId", async (req, res) => {
     `;
 
     res.setHeader("Content-Type", "text/html; charset=utf-8");
-    res.status(200).send(html);
+    return res.status(200).send(html);
   } catch (err) {
     console.error("Error in /u/:userId:", err);
-    res.status(500).send("Server error");
+    return res.status(500).send("Server error");
   }
 });
 
@@ -160,6 +181,7 @@ app.post("/webhook", async (req, res) => {
     console.log("Webhook received:");
     console.log(JSON.stringify(req.body, null, 2));
 
+    // Acknowledge immediately
     res.status(200).json({ ok: true });
 
     const event = req.body?.event;
@@ -169,21 +191,21 @@ app.post("/webhook", async (req, res) => {
     if (!msg) return;
     if (msg?.key?.fromMe) return;
 
-    const text = msg.messageBody;
-    const to = msg?.key?.cleanedSenderPn;
+    const text = String(msg?.messageBody || "").trim();
+    const to = String(msg?.key?.cleanedSenderPn || "").trim();
 
     if (!text || !to) return;
 
     const reply = await convo.handleMessage({
-      from: msg.remoteJid,
+      from: to,
       text,
     });
 
     console.log("Bot reply:", reply);
 
-    if (reply) {
-      await sendWhatsAppText(to, reply);
-    }
+    if (!reply) return;
+
+    await sendWhatsAppText(to, reply);
   } catch (err) {
     console.error("Webhook error:", err);
   }

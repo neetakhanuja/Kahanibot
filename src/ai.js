@@ -1,5 +1,5 @@
 // src/ai.js
-// KahaniBot AI: empathetic listener + curious story builder
+// KahaniBot AI: empathetic listener + reflective story builder
 
 const AI_ENABLED = String(process.env.AI_ENABLED || "").toLowerCase() === "true";
 const AI_MODEL = process.env.AI_MODEL || "gpt-4.1-mini";
@@ -18,46 +18,84 @@ function langLabel(lang) {
   return "English";
 }
 
-function hardLimitLines(text, maxLines) {
-  const lines = String(text || "")
-    .split("\n")
-    .map((l) => l.trim())
-    .filter(Boolean);
-
-  return lines.slice(0, maxLines).join("\n");
-}
-
-function pickScaffoldQuestion(lang) {
+function pickScaffoldQuestion(lang, mode = "ASK") {
   if (lang === "hi") {
-    const qs = [
+    const askQs = [
       "उस समय आपके साथ कौन था?",
       "यह कहाँ हुआ था?",
       "उस पल आपको सबसे ज़्यादा क्या याद है?",
-      "फिर क्या हुआ?",
       "उस समय आपको कैसा लगा?",
+      "उस बात में आपके लिए क्या खास था?",
+      "आपको उसकी कौन-सी बात सबसे ज़्यादा याद है?",
     ];
-    return qs[Math.floor(Math.random() * qs.length)];
+
+    const evokeQs = [
+      "क्या आपको उस जगह की कोई खुशबू, आवाज़, या दृश्य याद है?",
+      "उस पल की कौन-सी बात आज भी आपके मन में साफ़ है?",
+      "उस समय आसपास क्या दिख रहा था या सुनाई दे रहा था?",
+    ];
+
+    const bank = mode === "EVOKE" ? evokeQs : askQs;
+    return bank[Math.floor(Math.random() * bank.length)];
   }
 
   if (lang === "gu") {
-    const qs = [
+    const askQs = [
       "તે સમયે તમારી સાથે કોણ હતું?",
       "આ ક્યાં બન્યું હતું?",
       "તમને તે પળમાંથી સૌથી વધુ શું યાદ છે?",
-      "પછી શું થયું?",
       "તે સમયે તમને કેવું લાગ્યું?",
+      "તે વાતમાં તમારા માટે શું ખાસ હતું?",
+      "તમને તેની કઈ વાત સૌથી વધુ યાદ છે?",
     ];
-    return qs[Math.floor(Math.random() * qs.length)];
+
+    const evokeQs = [
+      "શું તમને ત્યાંની કોઈ સુગંધ, અવાજ, અથવા દૃશ્ય યાદ છે?",
+      "તે પળની કઈ વાત આજે પણ તમને સ્પષ્ટ યાદ છે?",
+      "તે સમયે આસપાસ શું દેખાતું કે સાંભળાતું હતું?",
+    ];
+
+    const bank = mode === "EVOKE" ? evokeQs : askQs;
+    return bank[Math.floor(Math.random() * bank.length)];
   }
 
-  const qs = [
+  const askQs = [
     "Who was with you then?",
     "Where did this happen?",
     "What do you remember most from that moment?",
-    "What happened after that?",
     "How did you feel at that time?",
+    "What made that moment special for you?",
+    "What do you remember most about the way they did that?",
   ];
-  return qs[Math.floor(Math.random() * qs.length)];
+
+  const evokeQs = [
+    "Do you remember any particular smell, sound, or sight from that moment?",
+    "What detail from that moment still feels vivid to you?",
+    "What do you remember seeing or hearing around you then?",
+  ];
+
+  const bank = mode === "EVOKE" ? evokeQs : askQs;
+  return bank[Math.floor(Math.random() * bank.length)];
+}
+
+function cleanLine(text, fallback = "") {
+  let out = String(text || "").trim();
+  if (!out) return fallback;
+  out = out.replace(/^["'\s]+|["'\s]+$/g, "");
+  if (out.length > 220) out = out.slice(0, 217).trim() + "...";
+  return out;
+}
+
+function ensureQuestion(text, lang = "en", mode = "ASK") {
+  let q = String(text || "").trim();
+
+  if (!q) return pickScaffoldQuestion(lang, mode);
+
+  if (!/[?؟]$/.test(q)) {
+    q = q.replace(/[.。!！]+$/g, "").trim() + "?";
+  }
+
+  return q;
 }
 
 function isTooGenericQuestion(lang, q) {
@@ -70,7 +108,12 @@ function isTooGenericQuestion(lang, q) {
       t === "what happened next" ||
       t === "can you tell me more?" ||
       t === "tell me more?" ||
-      t === "would you like to tell me more?"
+      t === "would you like to tell me more?" ||
+      t === "how did that make you feel?" ||
+      t === "what do you remember?" ||
+      t === "can you say more?" ||
+      t === "what else do you remember?" ||
+      t === "would you like to say more?"
     );
   }
 
@@ -79,7 +122,8 @@ function isTooGenericQuestion(lang, q) {
       t === "और क्या हुआ?" ||
       t === "और फिर क्या हुआ?" ||
       t === "और क्या याद आता है?" ||
-      t === "क्या आप और बताना चाहेंगे?"
+      t === "क्या आप और बताना चाहेंगे?" ||
+      t === "क्या हुआ था?"
     );
   }
 
@@ -88,29 +132,12 @@ function isTooGenericQuestion(lang, q) {
       t === "આ પછી શું થયું?" ||
       t === "પછી શું થયું?" ||
       t === "હવે પછી શું થયું?" ||
-      t === "શું તમે વધુ કહેશો?"
+      t === "શું તમે વધુ કહેશો?" ||
+      t === "પછી શું બન્યું?"
     );
   }
 
   return false;
-}
-
-function cleanAcknowledgment(text, lang) {
-  let out = String(text || "").trim();
-
-  if (!out) {
-    if (lang === "hi") return "यह एक सुंदर याद लगती है।";
-    if (lang === "gu") return "આ એક સુંદર યાદ લાગે છે.";
-    return "That sounds like a meaningful memory.";
-  }
-
-  out = out.replace(/^["'\s]+|["'\s]+$/g, "");
-
-  if (out.length > 120) {
-    out = out.slice(0, 117).trim() + "...";
-  }
-
-  return out;
 }
 
 async function callOpenAI({ system, user, temperature = 0.5 }) {
@@ -146,90 +173,229 @@ async function callOpenAI({ system, user, temperature = 0.5 }) {
   }
 }
 
-export async function generateReflectionAndQuestion({ lang, story_text }) {
+function parseTaggedBlock(raw) {
+  const text = String(raw || "").trim();
+
+  const modeMatch = text.match(
+    /MODE:\s*(REFLECT|ASK|SUMMARIZE|ENCOURAGE|EVOKE|CLOSE)/i
+  );
+  const line1Match = text.match(/LINE1:\s*([\s\S]*?)(?:\nLINE2:|\nQUESTION:|\n$)/i);
+  const line2Match = text.match(/LINE2:\s*([\s\S]*?)(?:\nQUESTION:|\n$)/i);
+  const questionMatch = text.match(/QUESTION:\s*([\s\S]*?)$/i);
+
+  return {
+    mode: modeMatch ? modeMatch[1].toUpperCase() : "",
+    line1: line1Match ? line1Match[1].trim() : "",
+    line2: line2Match ? line2Match[1].trim() : "",
+    question: questionMatch ? questionMatch[1].trim() : "",
+  };
+}
+
+export async function analyzeStoryProgress({ lang, story_text }) {
   try {
     const system =
-      `You are KahaniBot, a warm and gentle storytelling companion for older adults in India.\n` +
+      `You are KahaniBot, a warm and thoughtful storytelling companion for older adults in India.\n` +
       `Write in ${langLabel(lang)}.\n\n` +
-      `Your role:\n` +
-      `- Listen with empathy.\n` +
-      `- Respond with curiosity.\n` +
-      `- Help the speaker build a fuller story from a personal memory.\n\n` +
-      `Input structure:\n` +
-      `The input may contain:\n` +
-      `- Theme: an optional story topic.\n` +
-      `- Context so far: earlier parts of the story.\n` +
-      `- Latest message: the newest thing the user has said.\n\n` +
-      `Your job:\n` +
-      `- Acknowledge the Latest message directly.\n` +
-      `- Ask one gentle question that helps the story grow.\n` +
-      `- If a Theme exists, keep the question connected to that Theme.\n` +
-      `- Follow the story naturally instead of asking random questions.\n\n` +
+      `Your job is to act like a patient human listener, not an interviewer.\n` +
+      `You must read the whole story so far, not only the latest line.\n\n` +
+      `Choose exactly one mode:\n` +
+      `REFLECT = acknowledge warmly without asking a question.\n` +
+      `ASK = ask one grounded story-building question.\n` +
+      `SUMMARIZE = briefly reflect back the story so far to show understanding.\n` +
+      `ENCOURAGE = gently support the person to continue, without asking a question.\n` +
+      `EVOKE = ask one sensory or vivid-detail question that helps the story come alive.\n` +
+      `CLOSE = the story feels complete enough; do not ask a question.\n\n` +
+      `Important decision rules:\n` +
+      `- Use the whole story context.\n` +
+      `- Do not ask a question in every turn.\n` +
+      `- Ask only if there is one important missing piece that would naturally help the story.\n` +
+      `- A story does NOT need every detail to feel complete.\n` +
+      `- If the story already contains a person or relationship, an event or routine, one concrete detail, and emotional meaning, strongly prefer CLOSE.\n` +
+      `- If the latest message sounds reflective, settled, emotionally complete, or like a lasting memory, strongly prefer CLOSE.\n` +
+      `- If the user shares emotion, longing, affection, loss, or personal meaning, often prefer REFLECT over ASK.\n` +
+      `- Use EVOKE only when a sensory or vivid detail would naturally deepen the story.\n` +
+      `- Use SUMMARIZE only when enough material has been shared that a short restatement would feel natural.\n` +
+      `- Use ENCOURAGE when the user seems tentative, short, or unsure, and a warm nudge is better than a question.\n` +
+      `- If the story has a person and an event, but is still missing a vivid detail, a feeling, or what made the moment special, prefer ASK or EVOKE rather than repeated REFLECT.\n` +
+      `- If the user has shared two meaningful story turns and the story is still not complete, it is often better to ask one useful question than to keep reflecting.\n` +
+      `- A useful question often asks about one of these missing things: what the place felt like, how the person did something, what stood out most, or why the moment stayed with them.\n` +
+      `- Never ask multiple questions.\n` +
+      `- Never use generic questions like "What happened next?" or "Tell me more?".\n` +
+      `- Never sound like a therapist, teacher, or interviewer.\n` +
+      `- Never invent details.\n\n` +
+      `Story elements you may consider:\n` +
+      `people, place, time, action, feeling, sensory detail, meaning.\n` +
+      `This is only a guide, not a checklist.\n\n` +
       `Tone rules:\n` +
-      `- Warm, respectful, and simple.\n` +
-      `- Sound like a patient human listener.\n` +
-      `- Be empathetic, but do not exaggerate emotion.\n` +
-      `- Do not sound like a therapist, interviewer, or teacher.\n` +
-      `- Do not praise too much.\n` +
-      `- Do not give advice.\n` +
-      `- Do not judge.\n` +
-      `- Do not invent details.\n\n` +
-      `Question rules:\n` +
-      `- Ask only one question.\n` +
-      `- Keep it specific.\n` +
-      `- Prefer questions about people, place, time, action, feelings, small details, sequence, or meaning.\n` +
-      `- Avoid generic questions like "What happened next?" unless there is no better option.\n` +
-      `- Do not ask two questions in one line.\n\n` +
-      `Length rules:\n` +
-      `- Keep the whole reply very short.\n` +
-      `- Output exactly 2 lines.\n` +
-      `- Line 1: one short acknowledgment.\n` +
-      `- Line 2: one gentle question.\n` +
-      `- No bullet points.\n` +
-      `- No labels.\n` +
-      `- No extra text.`;
+      `- Warm, respectful, simple.\n` +
+      `- Short lines.\n` +
+      `- No advice.\n` +
+      `- No judgment.\n` +
+      `- No exaggerated praise.\n\n` +
+      `Output format:\n` +
+      `MODE: REFLECT or ASK or SUMMARIZE or ENCOURAGE or EVOKE or CLOSE\n` +
+      `LINE1: first short response line\n` +
+      `LINE2: second short response line if needed, otherwise leave blank\n` +
+      `QUESTION: one gentle question only if MODE is ASK or EVOKE, otherwise leave blank\n` +
+      `Return exactly these four tags and nothing else.`;
 
-    const user = `Story input:\n${story_text}\n\nReturn exactly 2 lines.`;
+    const user = `Story so far:\n${story_text}`;
 
-    const out = await callOpenAI({ system, user, temperature: 0.6 });
+    const out = await callOpenAI({ system, user, temperature: 0.45 });
     if (!out) return null;
 
-    const cleaned = hardLimitLines(out, 2);
-    const lines = cleaned
-      .split("\n")
-      .map((l) => l.trim())
-      .filter(Boolean);
+    const parsed = parseTaggedBlock(out);
+    if (!parsed.mode) return null;
 
-    if (lines.length >= 2) {
-      const reflection = cleanAcknowledgment(lines[0], lang || "en");
-      let question = String(lines[1] || "").trim();
+    let mode = parsed.mode;
+    let line1 = cleanLine(parsed.line1);
+    let line2 = cleanLine(parsed.line2);
+    let question = cleanLine(parsed.question);
 
-      if (!question.endsWith("?") && !question.endsWith("؟")) {
-        question = question.replace(/[.。]+$/g, "").trim() + "?";
-      }
-
+    if (mode === "ASK" || mode === "EVOKE") {
+      question = ensureQuestion(question, lang || "en", mode);
       if (isTooGenericQuestion(lang || "en", question)) {
-        question = pickScaffoldQuestion(lang || "en");
+        question = pickScaffoldQuestion(lang || "en", mode);
       }
-
-      return {
-        reflection,
-        question,
-        combined: `${reflection}\n${question}`,
-      };
     }
 
-    const one = cleanAcknowledgment(String(out).trim(), lang || "en");
-    const q = pickScaffoldQuestion(lang || "en");
-
     return {
-      reflection: one,
-      question: q,
-      combined: `${one}\n${q}`,
+      mode,
+      line1,
+      line2,
+      question,
     };
   } catch {
     return null;
   }
+}
+
+export async function generateStoryTurn({ lang, story_text }) {
+  const analysis = await analyzeStoryProgress({ lang, story_text });
+
+  if (!analysis) {
+    const line1 =
+      lang === "hi"
+        ? "यह एक अर्थपूर्ण कहानी लगती है।"
+        : lang === "gu"
+        ? "આ એક અર્થસભર વાર્તા લાગે છે."
+        : "That sounds like a meaningful story.";
+
+    const question = pickScaffoldQuestion(lang || "en", "ASK");
+
+    return {
+      mode: "ASK",
+      text: `${line1}\n${question}`,
+      analysis: {
+        mode: "ASK",
+        line1,
+        line2: "",
+        question,
+      },
+    };
+  }
+
+  const { mode, line1, line2, question } = analysis;
+
+  if (mode === "CLOSE") {
+    const closeLine1 =
+      line1 ||
+      (lang === "hi"
+        ? "धन्यवाद, आपने यह कहानी मेरे साथ साझा की।"
+        : lang === "gu"
+        ? "આ વાર્તા મારી સાથે શેર કરવા બદલ આભાર."
+        : "Thank you for sharing that story with me.");
+
+    const closeLine2 = line2 || "";
+
+    return {
+      mode: "CLOSE",
+      text: [closeLine1, closeLine2].filter(Boolean).join("\n"),
+      analysis,
+    };
+  }
+
+  if (mode === "REFLECT") {
+    const reflectLine1 =
+      line1 ||
+      (lang === "hi"
+        ? "यह कहानी बहुत अर्थपूर्ण लगती है।"
+        : lang === "gu"
+        ? "આ વાર્તા ખૂબ અર્થસભર લાગે છે."
+        : "That sounds like a meaningful story.");
+
+    return {
+      mode: "REFLECT",
+      text: [reflectLine1, line2].filter(Boolean).join("\n"),
+      analysis,
+    };
+  }
+
+  if (mode === "SUMMARIZE") {
+    const summaryLine1 =
+      line1 ||
+      (lang === "hi"
+        ? "मैं आपकी कहानी को इस तरह सुन रहा/रही हूँ।"
+        : lang === "gu"
+        ? "હું તમારી વાર્તાને આ રીતે સાંભળી રહ્યો/રહી છું."
+        : "I’m hearing your story like this.");
+
+    return {
+      mode: "SUMMARIZE",
+      text: [summaryLine1, line2].filter(Boolean).join("\n"),
+      analysis,
+    };
+  }
+
+  if (mode === "ENCOURAGE") {
+    const encourageLine1 =
+      line1 ||
+      (lang === "hi"
+        ? "यह एक सच्ची और कोमल कहानी लगती है।"
+        : lang === "gu"
+        ? "આ એક સચ્ચી અને નરમાઈભરી વાર્તા લાગે છે."
+        : "This feels like a gentle and real story.");
+
+    return {
+      mode: "ENCOURAGE",
+      text: [encourageLine1, line2].filter(Boolean).join("\n"),
+      analysis,
+    };
+  }
+
+  if (mode === "EVOKE") {
+    const evokeLine1 =
+      line1 ||
+      (lang === "hi"
+        ? "उस पल में कुछ बहुत जीवंत लगता है।"
+        : lang === "gu"
+        ? "તે પળમાં કંઈક ખૂબ જીવંત લાગે છે."
+        : "There is something very vivid in that moment.");
+
+    const evokeQuestion = question || pickScaffoldQuestion(lang || "en", "EVOKE");
+
+    return {
+      mode: "EVOKE",
+      text: [evokeLine1, line2, evokeQuestion].filter(Boolean).join("\n"),
+      analysis,
+    };
+  }
+
+  const askLine1 =
+    line1 ||
+    (lang === "hi"
+      ? "यह एक अर्थपूर्ण कहानी लगती है।"
+      : lang === "gu"
+      ? "આ એક અર્થસભર વાર્તા લાગે છે."
+      : "That sounds like a meaningful story.");
+
+  const askQuestion = question || pickScaffoldQuestion(lang || "en", "ASK");
+
+  return {
+    mode: "ASK",
+    text: [askLine1, line2, askQuestion].filter(Boolean).join("\n"),
+    analysis,
+  };
 }
 
 /*

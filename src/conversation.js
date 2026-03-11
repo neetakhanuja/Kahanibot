@@ -5,7 +5,7 @@ import path from "path";
 
 import { getSheetsClient, readRange } from "./sheets.js";
 import { saveStory } from "./storyStore.js";
-import { generateReflectionAndQuestion, polishStory } from "./ai.js";
+import { generateStoryTurn, polishStory } from "./ai.js";
 
 const SHEET_ID = process.env.GOOGLE_SHEET_ID;
 const SESSIONS_TAB = "sessions";
@@ -163,6 +163,88 @@ function parsePrivacyChoice(text) {
   return null;
 }
 
+function isManualFinish(text) {
+  const t = String(text || "").trim().toLowerCase();
+
+  const exact = new Set([
+    "done",
+    "finish",
+    "finished",
+    "end",
+    "end story",
+    "the end",
+    "thats all",
+    "that's all",
+    "that is all",
+    "that was all",
+    "that was it",
+    "thats it",
+    "that's it",
+    "that is it",
+    "that is the story",
+    "that's the story",
+    "story done",
+    "no more",
+    "nothing more",
+    "bas itna hi",
+    "बस इतना ही",
+    "बस यही",
+    "इतना ही",
+    "यही कहानी है",
+    "ખતમ",
+    "આટલું જ",
+    "બસ એટલું જ",
+  ]);
+
+  return exact.has(t);
+}
+
+function hasReflectiveEnding(text) {
+  const t = String(text || "").trim().toLowerCase();
+
+  const phrases = [
+    "stayed with me",
+    "stay with me",
+    "has stayed with me",
+    "that stayed with me",
+    "those days stayed with me",
+    "that memory stayed with me",
+    "for the rest of my life",
+    "all my life",
+    "my whole life",
+    "to this day",
+    "till today",
+    "even today",
+    "even now i remember",
+    "i still remember",
+    "i still remember those days",
+    "i still think about it",
+    "i never forgot",
+    "i have never forgotten",
+    "i miss those days",
+    "i still miss her",
+    "i still miss him",
+    "that is the memory i carry with me",
+    "this is the memory i carry with me",
+    "those moments were very special",
+    "those moments were special",
+    "that was very special to me",
+    "that memory remains with me",
+    "it remains with me",
+    "it stayed with me",
+    "aaj bhi yaad hai",
+    "आज भी याद है",
+    "आज भी याद आता है",
+    "आज तक याद है",
+    "अब भी याद है",
+    "હજુ પણ યાદ છે",
+    "આજેય યાદ છે",
+    "આજ સુધી યાદ છે",
+  ];
+
+  return phrases.some((p) => t.includes(p));
+}
+
 function seemsLikeNaturalEnding(text) {
   const t = String(text || "").trim().toLowerCase();
 
@@ -176,14 +258,6 @@ function seemsLikeNaturalEnding(text) {
     "that is my story",
     "that's what i remember",
     "that is what i remember",
-    "that is the memory i remember",
-    "that is the memory i still carry with me",
-    "this is the memory i still carry with me",
-    "this is the memory i remember most",
-    "that is the memory i remember most",
-    "i still carry this memory with me",
-    "i still remember this",
-    "i remember this most",
     "nothing more",
     "no more",
     "bas itna hi",
@@ -194,21 +268,15 @@ function seemsLikeNaturalEnding(text) {
     "इतना ही",
     "આટલું જ",
     "બસ એટલું જ",
-    "આજ યાદ છે",
     "આ જ વાર્તા છે",
   ];
 
   if (endings.some((p) => t.includes(p))) return true;
-
-  if (
-    (t.includes("i still remember") || t.includes("i still carry")) &&
-    (t.includes("memory") || t.includes("days") || t.includes("those days"))
-  ) {
-    return true;
-  }
+  if (hasReflectiveEnding(t)) return true;
 
   return false;
 }
+
 function shouldTreatAsStory(text) {
   const t = String(text || "").trim();
   if (!t) return false;
@@ -224,7 +292,7 @@ function fallbackQuestion(lang) {
       "उस समय आपके साथ कौन था?",
       "यह कहाँ हुआ था?",
       "उस पल आपको सबसे ज़्यादा क्या याद है?",
-      "फिर क्या हुआ?",
+      "उस समय आपको कैसा लगा?",
     ];
     return qs[Math.floor(Math.random() * qs.length)];
   }
@@ -234,7 +302,7 @@ function fallbackQuestion(lang) {
       "તે સમયે તમારી સાથે કોણ હતું?",
       "આ ક્યાં બન્યું હતું?",
       "તમને તે પળમાંથી સૌથી વધુ શું યાદ છે?",
-      "પછી શું થયું?",
+      "તે સમયે તમને કેવું લાગ્યું?",
     ];
     return qs[Math.floor(Math.random() * qs.length)];
   }
@@ -243,7 +311,7 @@ function fallbackQuestion(lang) {
     "Who was with you then?",
     "Where did this happen?",
     "What do you remember most from that moment?",
-    "What happened after that?",
+    "How did you feel at that time?",
   ];
   return qs[Math.floor(Math.random() * qs.length)];
 }
@@ -253,7 +321,7 @@ function openingText(lang) {
     return (
       "नमस्ते.\n" +
       "मैं आपकी एक कहानी सुनना चाहूँगा/चाहूँगी.\n\n" +
-      "अगर कोई याद आप साझा करना चाहें, तो मुझे बताइए.\n" +
+      "अगर कोई कहानी आप साझा करना चाहें, तो मुझे बताइए.\n" +
       "और अगर आप चाहें, तो मैं आपको एक विषय सुझा सकता/सकती हूँ."
     );
   }
@@ -262,7 +330,7 @@ function openingText(lang) {
     return (
       "નમસ્તે.\n" +
       "હું તમારી એક વાર્તા સાંભળવા માંગુ છું.\n\n" +
-      "જો કોઈ યાદ તમે શેર કરવા માંગતા હો, તો મને કહો.\n" +
+      "જો કોઈ વાર્તા તમે શેર કરવા માંગતા હો, તો મને કહો.\n" +
       "અને જો તમે ઇચ્છો, તો હું તમને એક વિષય સૂચવી શકું."
     );
   }
@@ -270,7 +338,7 @@ function openingText(lang) {
   return (
     "Hello.\n" +
     "I would love to listen to one of your stories.\n\n" +
-    "If there is a memory you would like to share, please tell me about it.\n" +
+    "If there is a story you would like to share, please tell me about it.\n" +
     "And if you prefer, I can suggest a topic for you."
   );
 }
@@ -352,9 +420,40 @@ function stoppedText(lang) {
 }
 
 function topicFallback(lang) {
-  if (lang === "hi") return "एक ऐसी याद जो आज भी आपके साथ है";
-  if (lang === "gu") return "એવી એક યાદ જે આજે પણ તમારી સાથે છે";
-  return "A memory that has stayed with you";
+  if (lang === "hi") return "एक ऐसी कहानी जो आज भी आपके साथ है";
+  if (lang === "gu") return "એવી એક વાર્તા જે આજે પણ તમારી સાથે છે";
+  return "A story that has stayed with you";
+}
+
+function looksQuestionLike(text) {
+  const t = String(text || "").trim().toLowerCase();
+  if (!t) return false;
+  if (/[?؟]$/.test(t)) return true;
+
+  const starters = [
+    "who ",
+    "what ",
+    "where ",
+    "when ",
+    "why ",
+    "how ",
+    "do you ",
+    "did you ",
+    "can you ",
+    "would you ",
+    "क्या ",
+    "कौन ",
+    "कहाँ ",
+    "कैसा ",
+    "कैसे ",
+    "શું ",
+    "કોણ ",
+    "ક્યાં ",
+    "કેવું ",
+    "કેવી રીતે ",
+  ];
+
+  return starters.some((s) => t.startsWith(s));
 }
 
 // --------------------
@@ -513,39 +612,96 @@ async function resetSession(user_id, lang = "en") {
   });
 }
 
-function buildAiInput({ seed_prompt, contextText, latestMessage }) {
+function buildAiInput({ seed_prompt, fullStory }) {
   const themeBlock = seed_prompt ? `Theme: ${seed_prompt}` : "Theme:";
-  const contextBlock = contextText ? `Context so far:\n${contextText}` : "Context so far:";
-  const latestBlock = `Latest message:\n${latestMessage}`;
+  const storyBlock = fullStory ? `Full story so far:\n${fullStory}` : "Full story so far:";
 
-  return `${themeBlock}\n\n${contextBlock}\n\n${latestBlock}`;
+  return `${themeBlock}\n\n${storyBlock}`;
 }
 
-async function buildStoryReply({ lang, seed_prompt, contextText, latestMessage }) {
+function adaptAiTurnToFlow({ aiTurn, lang, last_agent_prompt }) {
+  if (!aiTurn) {
+    return {
+      mode: "ASK",
+      text: fallbackQuestion(lang),
+    };
+  }
+
+  const lastWasQuestion = looksQuestionLike(last_agent_prompt);
+  const thisIsQuestionMode = aiTurn.mode === "ASK" || aiTurn.mode === "EVOKE";
+
+  if (lastWasQuestion && thisIsQuestionMode) {
+    const text =
+      aiTurn.analysis?.line1 ||
+      aiTurn.analysis?.line2 ||
+      (lang === "hi"
+        ? "मैं आपकी कहानी सुन रहा/रही हूँ।"
+        : lang === "gu"
+        ? "હું તમારી વાર્તા સાંભળી રહ્યો/રહી છું."
+        : "I’m listening to your story.");
+
+    return {
+      mode: "REFLECT",
+      text,
+      analysis: {
+        mode: "REFLECT",
+        line1: text,
+        line2: "",
+        question: "",
+      },
+    };
+  }
+
+  return aiTurn;
+}
+
+async function buildStoryReply({
+  lang,
+  seed_prompt,
+  fullStory,
+  last_agent_prompt,
+}) {
   const aiInput = buildAiInput({
     seed_prompt,
-    contextText,
-    latestMessage,
+    fullStory,
   });
 
-  const aiResult = await generateReflectionAndQuestion({
+  const aiResult = await generateStoryTurn({
     lang,
     story_text: aiInput,
   });
 
-  if (aiResult?.combined) return aiResult.combined;
-  return fallbackQuestion(lang);
+  const adapted = adaptAiTurnToFlow({
+    aiTurn: aiResult,
+    lang,
+    last_agent_prompt,
+  });
+
+  if (adapted) return adapted;
+
+  return {
+    mode: "ASK",
+    text: fallbackQuestion(lang),
+  };
 }
 
 function shouldMoveToPrivacy({ msg, story_text, msg_count }) {
+  const latest = String(msg || "").trim();
   const cleanStory = String(story_text || "").trim();
+
   if (!cleanStory) return false;
 
+  if (isManualFinish(latest)) return true;
+
+  const wordCount = cleanStory.split(/\s+/).filter(Boolean).length;
   const longEnough =
-    cleanStory.length >= 120 || Number(msg_count || 0) >= 3 || cleanStory.split(/\s+/).length >= 25;
+    cleanStory.length >= 80 || Number(msg_count || 0) >= 2 || wordCount >= 18;
 
   if (!longEnough) return false;
-  return seemsLikeNaturalEnding(msg);
+
+  if (seemsLikeNaturalEnding(latest)) return true;
+
+  return false;
 }
 
 async function finalizeStory({ user_id, lang, story_text, publish }) {
@@ -560,6 +716,9 @@ async function finalizeStory({ user_id, lang, story_text, publish }) {
     user_id,
     story_text: finalStoryText,
     publish,
+    title: polished?.title || "",
+    polished_story_text: finalStoryText,
+    transcript_text: String(story_text || "").trim(),
   });
 
   await resetSession(user_id, lang);
@@ -723,12 +882,29 @@ async function processTurn({ user_id, text, forcedLang }) {
     return privacyMsg;
   }
 
-  const reply = await buildStoryReply({
+  const aiTurn = await buildStoryReply({
     lang,
     seed_prompt: session.seed_prompt || "",
-    contextText: session.story_text || "",
-    latestMessage: msg,
+    fullStory: updatedStory,
+    last_agent_prompt: session.last_agent_prompt || "",
   });
+
+  if (aiTurn?.mode === "CLOSE") {
+    const privacyMsg = askPrivacyText(lang);
+
+    await upsertSession({
+      ...session,
+      state: "ASK_PRIVACY",
+      lang,
+      story_text: updatedStory,
+      msg_count: updatedCount,
+      last_agent_prompt: privacyMsg,
+    });
+
+    return privacyMsg;
+  }
+
+  const replyText = aiTurn?.text || fallbackQuestion(lang);
 
   await upsertSession({
     ...session,
@@ -736,10 +912,10 @@ async function processTurn({ user_id, text, forcedLang }) {
     lang,
     story_text: updatedStory,
     msg_count: updatedCount,
-    last_agent_prompt: reply,
+    last_agent_prompt: replyText,
   });
 
-  return reply;
+  return replyText;
 }
 
 // --------------------

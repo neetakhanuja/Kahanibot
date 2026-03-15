@@ -1,7 +1,6 @@
 import "dotenv/config";
 import express from "express";
 import path from "path";
-import FormData from "form-data";
 import * as convo from "./src/conversation.js";
 import { getStoriesByUser } from "./src/storyStore.js";
 
@@ -89,7 +88,10 @@ async function decryptWasenderMedia(message) {
       },
     };
 
-    console.log("Wasender decrypt request body:", JSON.stringify(requestBody, null, 2));
+    console.log(
+      "Wasender decrypt request body:",
+      JSON.stringify(requestBody, null, 2)
+    );
 
     const res = await fetch("https://www.wasenderapi.com/api/decrypt-media", {
       method: "POST",
@@ -108,16 +110,16 @@ async function decryptWasenderMedia(message) {
     }
 
     const mediaUrl =
-    data?.publicUrl ||
-    data?.url ||
-    data?.media_url ||
-    data?.downloadUrl ||
-    data?.download_url ||
-    data?.data?.publicUrl ||
-    data?.data?.url ||
-    data?.data?.media_url ||
-    data?.data?.downloadUrl ||
-    data?.data?.download_url ||
+      data?.publicUrl ||
+      data?.url ||
+      data?.media_url ||
+      data?.downloadUrl ||
+      data?.download_url ||
+      data?.data?.publicUrl ||
+      data?.data?.url ||
+      data?.data?.media_url ||
+      data?.data?.downloadUrl ||
+      data?.data?.download_url ||
       null;
 
     return mediaUrl ? String(mediaUrl).trim() : null;
@@ -142,29 +144,33 @@ async function transcribeAudioFromUrl(mediaUrl) {
       throw new Error(`Failed to download audio: ${audioRes.status}`);
     }
 
-    const contentType =
-      audioRes.headers.get("content-type") || "audio/ogg";
-    const audioBuffer = Buffer.from(await audioRes.arrayBuffer());
+    const contentType = audioRes.headers.get("content-type") || "audio/ogg";
+    const audioBuffer = await audioRes.arrayBuffer();
 
     const formData = new FormData();
-    formData.append("file", audioBuffer, {
-      filename: "voice.ogg",
-      contentType,
-    });
+    formData.append(
+      "file",
+      new Blob([audioBuffer], { type: contentType }),
+      "voice.ogg"
+    );
     formData.append("model", "whisper-1");
 
-    const whisperRes = await fetch("https://api.openai.com/v1/audio/transcriptions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-        ...formData.getHeaders(),
-      },
-      body: formData,
-    });
+    const whisperRes = await fetch(
+      "https://api.openai.com/v1/audio/transcriptions",
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+        },
+        body: formData,
+      }
+    );
 
     if (!whisperRes.ok) {
       const errText = await whisperRes.text().catch(() => "");
-      throw new Error(`Whisper transcription failed: ${whisperRes.status} ${errText}`);
+      throw new Error(
+        `Whisper transcription failed: ${whisperRes.status} ${errText}`
+      );
     }
 
     const json = await whisperRes.json();
@@ -315,8 +321,6 @@ app.post("/webhook", async (req, res) => {
 
     let text = extractMessageText(msg);
 
-    // Voice note pipeline:
-    // webhook -> decrypt media -> download audio -> transcribe -> conversation engine
     if (!text) {
       const audioMsg = extractAudioMessage(msg);
 

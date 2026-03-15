@@ -83,13 +83,21 @@ async function decryptWasenderMedia(message) {
       throw new Error("Missing WASENDER_API_KEY");
     }
 
+    const requestBody = {
+      data: {
+        messages: message,
+      },
+    };
+
+    console.log("Wasender decrypt request body:", JSON.stringify(requestBody, null, 2));
+
     const res = await fetch("https://www.wasenderapi.com/api/decrypt-media", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${process.env.WASENDER_API_KEY}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ message }),
+      body: JSON.stringify(requestBody),
     });
 
     const data = await res.json().catch(() => null);
@@ -106,6 +114,8 @@ async function decryptWasenderMedia(message) {
       data?.download_url ||
       data?.data?.url ||
       data?.data?.media_url ||
+      data?.data?.downloadUrl ||
+      data?.data?.download_url ||
       null;
 
     return mediaUrl ? String(mediaUrl).trim() : null;

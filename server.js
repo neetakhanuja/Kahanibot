@@ -56,6 +56,48 @@ async function sendWhatsAppText(to, text) {
   return data;
 }
 
+async function transcribeAudioFromUrl(mediaUrl) {
+  try {
+    if (!process.env.OPENAI_API_KEY) {
+      throw new Error("Missing OPENAI_API_KEY");
+    }
+
+    const audioRes = await fetch(mediaUrl);
+    if (!audioRes.ok) {
+      throw new Error(`Failed to download audio: ${audioRes.status}`);
+    }
+
+    const audioBuffer = await audioRes.arrayBuffer();
+
+    const formData = new FormData();
+    formData.append(
+      "file",
+      new Blob([audioBuffer], { type: "audio/ogg" }),
+      "voice.ogg"
+    );
+    formData.append("model", "whisper-1");
+
+    const whisperRes = await fetch("https://api.openai.com/v1/audio/transcriptions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+      },
+      body: formData,
+    });
+
+    if (!whisperRes.ok) {
+      const errText = await whisperRes.text().catch(() => "");
+      throw new Error(`Whisper transcription failed: ${whisperRes.status} ${errText}`);
+    }
+
+    const json = await whisperRes.json();
+    return String(json?.text || "").trim();
+  } catch (err) {
+    console.error("Audio transcription error:", err);
+    return "";
+  }
+}
+
 // Health
 app.get("/health", (req, res) => res.status(200).send("OK"));
 
@@ -191,10 +233,26 @@ app.post("/webhook", async (req, res) => {
     if (!msg) return;
     if (msg?.key?.fromMe) return;
 
-    const text = String(msg?.messageBody || "").trim();
     const to = String(msg?.key?.cleanedSenderPn || "").trim();
+    if (!to) return;
 
-    if (!text || !to) return;
+    let text = String(msg?.messageBody || "").trim();
+
+    // Handle voice note / audio
+    if (!text) {
+      const audioUrl =
+        msg?.message?.audioMessage?.url ||
+        msg?.message?.pttMessage?.url ||
+        msg?.audioMessage?.url;
+
+      if (audioUrl) {
+        console.log("Voice message detected");
+        text = await transcribeAudioFromUrl(audioUrl);
+        console.log("Transcribed audio:", text);
+      }
+    }
+
+    if (!text) return;
 
     const reply = await convo.handleMessage({
       from: to,

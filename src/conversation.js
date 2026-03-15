@@ -166,12 +166,17 @@ function parsePrivacyChoice(text) {
 function isManualFinish(text) {
   const t = String(text || "").trim().toLowerCase();
 
-  const exact = new Set([
+  const phrases = [
     "done",
     "finish",
     "finished",
     "end",
     "end story",
+    "end of story",
+    "story end",
+    "story ends",
+    "story finished",
+    "story done",
     "the end",
     "thats all",
     "that's all",
@@ -183,20 +188,22 @@ function isManualFinish(text) {
     "that is it",
     "that is the story",
     "that's the story",
-    "story done",
-    "no more",
-    "nothing more",
-    "bas itna hi",
-    "बस इतना ही",
-    "बस यही",
-    "इतना ही",
-    "यही कहानी है",
+    "story khatam",
+    "khatam ho gai",
+    "khatam ho gayi",
+    "ha story khatam ho gai",
+    "ha story khatam ho gayi",
+    "मेरी कहानी खत्म",
+    "कहानी खत्म",
+    "खत्म",
+    "વાર્તા ખતમ",
     "ખતમ",
-    "આટલું જ",
     "બસ એટલું જ",
-  ]);
+    "આટલું જ",
+    "बस इतना ही",
+  ];
 
-  return exact.has(t);
+  return phrases.some((p) => t.includes(p));
 }
 
 function hasReflectiveEnding(text) {
@@ -222,6 +229,7 @@ function hasReflectiveEnding(text) {
     "i never forgot",
     "i have never forgotten",
     "i miss those days",
+    "i miss that time",
     "i still miss her",
     "i still miss him",
     "that is the memory i carry with me",
@@ -275,6 +283,59 @@ function seemsLikeNaturalEnding(text) {
   if (hasReflectiveEnding(t)) return true;
 
   return false;
+}
+
+function parseEndConfirmation(text) {
+  const t = String(text || "").trim().toLowerCase();
+
+  const continueWords = [
+    "more",
+    "add more",
+    "i want to add more",
+    "let me add more",
+    "continue",
+    "i want to continue",
+    "not yet",
+    "wait",
+    "i want to say more",
+    "i have more to say",
+    "more to add",
+    "और",
+    "और बताना है",
+    "अभी और",
+    "હજુ",
+    "હજુ થોડું",
+    "વધારે",
+    "હજુ કહેવું છે",
+  ];
+
+  const saveWords = [
+    "save",
+    "save it",
+    "you can save it",
+    "save now",
+    "done",
+    "finished",
+    "that's all",
+    "that is all",
+    "nothing more",
+    "no more",
+    "yes save",
+    "okay save",
+    "ok save",
+    "बस",
+    "सेव",
+    "सेव कर दो",
+    "सेव करो",
+    "બસ",
+    "સેવ",
+    "સેવ કરો",
+  ];
+
+  if (continueWords.some((p) => t.includes(p))) return "MORE";
+  if (saveWords.some((p) => t.includes(p))) return "SAVE";
+
+  return null;
 }
 
 function shouldTreatAsStory(text) {
@@ -353,6 +414,42 @@ function topicIntroText(lang, topic) {
   }
 
   return `Here is a topic:\n${topic}\n\nWhenever you are ready, tell me a story about it.`;
+}
+
+function askEndConfirmText(lang) {
+  if (lang === "hi") {
+    return (
+      "धन्यवाद, आपने यह याद बहुत सुंदर तरीके से साझा की.\n\n" +
+      "क्या आप इसमें कुछ और जोड़ना चाहेंगे, या हम इसे सेव कर दें?\n" +
+      "Reply MORE or SAVE."
+    );
+  }
+
+  if (lang === "gu") {
+    return (
+      "આ યાદ તમે ખૂબ સુંદર રીતે શેર કરી.\n\n" +
+      "શું તમે તેમાં કંઈ વધુ ઉમેરવા માંગો છો, કે આપણે તેને સેવ કરી દઈએ?\n" +
+      "Reply MORE or SAVE."
+    );
+  }
+
+  return (
+    "Thank you for sharing that memory.\n\n" +
+    "Would you like to add anything else to this story, or shall we save it?\n" +
+    "Reply MORE or SAVE."
+  );
+}
+
+function endConfirmReminderText(lang) {
+  if (lang === "hi") return "अगर आप कुछ और जोड़ना चाहें तो MORE लिखें, या सेव करने के लिए SAVE लिखें।";
+  if (lang === "gu") return "જો તમે કંઈ વધુ ઉમેરવા માંગો છો તો MORE લખો, અથવા સેવ કરવા માટે SAVE લખો.";
+  return "If you want to add something more, reply MORE. If you want to save it now, reply SAVE.";
+}
+
+function continueAfterEndCheckText(lang) {
+  if (lang === "hi") return "ठीक है, मैं सुन रहा/रही हूँ। आप आगे बताइए।";
+  if (lang === "gu") return "બરાબર, હું સાંભળું છું. તમે આગળ કહો.";
+  return "Okay, I’m listening. Please go on.";
 }
 
 function askPrivacyText(lang) {
@@ -685,13 +782,12 @@ async function buildStoryReply({
   };
 }
 
-function shouldMoveToPrivacy({ msg, story_text, msg_count }) {
+function shouldSuggestEndCheck({ msg, story_text, msg_count }) {
   const latest = String(msg || "").trim();
   const cleanStory = String(story_text || "").trim();
 
   if (!cleanStory) return false;
-
-  if (isManualFinish(latest)) return true;
+  if (isManualFinish(latest)) return false;
 
   const wordCount = cleanStory.split(/\s+/).filter(Boolean).length;
   const longEnough =
@@ -699,9 +795,7 @@ function shouldMoveToPrivacy({ msg, story_text, msg_count }) {
 
   if (!longEnough) return false;
 
-  if (seemsLikeNaturalEnding(latest)) return true;
-
-  return false;
+  return seemsLikeNaturalEnding(latest);
 }
 
 async function finalizeStory({ user_id, lang, story_text, publish }) {
@@ -799,6 +893,95 @@ async function processTurn({ user_id, text, forcedLang }) {
     return "";
   }
 
+  if (session.state === "CONFIRM_END") {
+    const privacyChoice = parsePrivacyChoice(msg);
+    if (privacyChoice) {
+      const savedReply = await finalizeStory({
+        user_id,
+        lang,
+        story_text: session.story_text,
+        publish: privacyChoice === "share",
+      });
+      return savedReply;
+    }
+
+    const endChoice = parseEndConfirmation(msg);
+
+    if (endChoice === "SAVE" || isManualFinish(msg)) {
+      const privacyMsg = askPrivacyText(lang);
+
+      await upsertSession({
+        ...session,
+        state: "ASK_PRIVACY",
+        lang,
+        last_agent_prompt: privacyMsg,
+      });
+
+      return privacyMsg;
+    }
+
+    if (endChoice === "MORE") {
+      const continueMsg = continueAfterEndCheckText(lang);
+
+      await upsertSession({
+        ...session,
+        state: "COLLECTING",
+        lang,
+        last_agent_prompt: continueMsg,
+      });
+
+      return continueMsg;
+    }
+
+    if (shouldTreatAsStory(msg)) {
+      const continuedStory = session.story_text ? `${session.story_text}\n${msg}` : msg;
+      const continuedCount = Number(session.msg_count || 0) + 1;
+
+      const aiTurn = await buildStoryReply({
+        lang,
+        seed_prompt: session.seed_prompt || "",
+        fullStory: continuedStory,
+        last_agent_prompt: session.last_agent_prompt || "",
+      });
+
+      if (aiTurn?.mode === "CLOSE") {
+        const confirmMsg = askEndConfirmText(lang);
+
+        await upsertSession({
+          ...session,
+          state: "CONFIRM_END",
+          lang,
+          story_text: continuedStory,
+          msg_count: continuedCount,
+          last_agent_prompt: confirmMsg,
+        });
+
+        return confirmMsg;
+      }
+
+      const replyText = aiTurn?.text || fallbackQuestion(lang);
+
+      await upsertSession({
+        ...session,
+        state: "COLLECTING",
+        lang,
+        story_text: continuedStory,
+        msg_count: continuedCount,
+        last_agent_prompt: replyText,
+      });
+
+      return replyText;
+    }
+
+    const reminder = endConfirmReminderText(lang);
+    await upsertSession({
+      ...session,
+      lang,
+      last_agent_prompt: reminder,
+    });
+    return reminder;
+  }
+
   if (session.state === "ASK_PRIVACY") {
     const choice = parsePrivacyChoice(msg);
     if (!choice) {
@@ -861,25 +1044,40 @@ async function processTurn({ user_id, text, forcedLang }) {
   const updatedStory = session.story_text ? `${session.story_text}\n${msg}` : msg;
   const updatedCount = Number(session.msg_count || 0) + 1;
 
+  if (isManualFinish(msg) || lower === "save") {
+    const privacyMsg = askPrivacyText(lang);
+  
+    await upsertSession({
+      ...session,
+      state: "ASK_PRIVACY",
+      lang,
+      story_text: session.story_text || "",
+      msg_count: Number(session.msg_count || 0),
+      last_agent_prompt: privacyMsg,
+    });
+  
+    return privacyMsg;
+  }
+
   if (
-    shouldMoveToPrivacy({
+    shouldSuggestEndCheck({
       msg,
       story_text: updatedStory,
       msg_count: updatedCount,
     })
   ) {
-    const privacyMsg = askPrivacyText(lang);
+    const confirmMsg = askEndConfirmText(lang);
 
     await upsertSession({
       ...session,
-      state: "ASK_PRIVACY",
+      state: "CONFIRM_END",
       lang,
       story_text: updatedStory,
       msg_count: updatedCount,
-      last_agent_prompt: privacyMsg,
+      last_agent_prompt: confirmMsg,
     });
 
-    return privacyMsg;
+    return confirmMsg;
   }
 
   const aiTurn = await buildStoryReply({
@@ -890,18 +1088,18 @@ async function processTurn({ user_id, text, forcedLang }) {
   });
 
   if (aiTurn?.mode === "CLOSE") {
-    const privacyMsg = askPrivacyText(lang);
+    const confirmMsg = askEndConfirmText(lang);
 
     await upsertSession({
       ...session,
-      state: "ASK_PRIVACY",
+      state: "CONFIRM_END",
       lang,
       story_text: updatedStory,
       msg_count: updatedCount,
-      last_agent_prompt: privacyMsg,
+      last_agent_prompt: confirmMsg,
     });
 
-    return privacyMsg;
+    return confirmMsg;
   }
 
   const replyText = aiTurn?.text || fallbackQuestion(lang);

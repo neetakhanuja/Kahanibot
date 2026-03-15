@@ -108,14 +108,16 @@ async function decryptWasenderMedia(message) {
     }
 
     const mediaUrl =
-      data?.url ||
-      data?.media_url ||
-      data?.downloadUrl ||
-      data?.download_url ||
-      data?.data?.url ||
-      data?.data?.media_url ||
-      data?.data?.downloadUrl ||
-      data?.data?.download_url ||
+    data?.publicUrl ||
+    data?.url ||
+    data?.media_url ||
+    data?.downloadUrl ||
+    data?.download_url ||
+    data?.data?.publicUrl ||
+    data?.data?.url ||
+    data?.data?.media_url ||
+    data?.data?.downloadUrl ||
+    data?.data?.download_url ||
       null;
 
     return mediaUrl ? String(mediaUrl).trim() : null;

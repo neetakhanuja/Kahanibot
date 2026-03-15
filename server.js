@@ -1,7 +1,7 @@
-// server.js
 import "dotenv/config";
 import express from "express";
 import path from "path";
+import FormData from "form-data";
 import * as convo from "./src/conversation.js";
 import { getStoriesByUser } from "./src/storyStore.js";
 
@@ -56,10 +56,73 @@ async function sendWhatsAppText(to, text) {
   return data;
 }
 
+function extractIncomingMessage(body) {
+  return body?.data?.messages || null;
+}
+
+function extractSenderPhone(msg) {
+  return String(msg?.key?.cleanedSenderPn || "").trim();
+}
+
+function extractMessageText(msg) {
+  return String(msg?.messageBody || "").trim();
+}
+
+function extractAudioMessage(msg) {
+  return (
+    msg?.message?.audioMessage ||
+    msg?.message?.pttMessage ||
+    msg?.audioMessage ||
+    null
+  );
+}
+
+async function decryptWasenderMedia(message) {
+  try {
+    if (!process.env.WASENDER_API_KEY) {
+      throw new Error("Missing WASENDER_API_KEY");
+    }
+
+    const res = await fetch("https://www.wasenderapi.com/api/decrypt-media", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${process.env.WASENDER_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ message }),
+    });
+
+    const data = await res.json().catch(() => null);
+    console.log("Wasender decrypt response:", data);
+
+    if (!res.ok) {
+      throw new Error(`Wasender decrypt failed with status ${res.status}`);
+    }
+
+    const mediaUrl =
+      data?.url ||
+      data?.media_url ||
+      data?.downloadUrl ||
+      data?.download_url ||
+      data?.data?.url ||
+      data?.data?.media_url ||
+      null;
+
+    return mediaUrl ? String(mediaUrl).trim() : null;
+  } catch (err) {
+    console.error("Media decrypt error:", err);
+    return null;
+  }
+}
+
 async function transcribeAudioFromUrl(mediaUrl) {
   try {
     if (!process.env.OPENAI_API_KEY) {
       throw new Error("Missing OPENAI_API_KEY");
+    }
+
+    if (!mediaUrl) {
+      throw new Error("Missing mediaUrl");
     }
 
     const audioRes = await fetch(mediaUrl);
@@ -67,20 +130,22 @@ async function transcribeAudioFromUrl(mediaUrl) {
       throw new Error(`Failed to download audio: ${audioRes.status}`);
     }
 
-    const audioBuffer = await audioRes.arrayBuffer();
+    const contentType =
+      audioRes.headers.get("content-type") || "audio/ogg";
+    const audioBuffer = Buffer.from(await audioRes.arrayBuffer());
 
     const formData = new FormData();
-    formData.append(
-      "file",
-      new Blob([audioBuffer], { type: "audio/ogg" }),
-      "voice.ogg"
-    );
+    formData.append("file", audioBuffer, {
+      filename: "voice.ogg",
+      contentType,
+    });
     formData.append("model", "whisper-1");
 
     const whisperRes = await fetch("https://api.openai.com/v1/audio/transcriptions", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+        ...formData.getHeaders(),
       },
       body: formData,
     });
@@ -229,26 +294,45 @@ app.post("/webhook", async (req, res) => {
     const event = req.body?.event;
     if (event !== "messages.received") return;
 
-    const msg = req.body?.data?.messages;
+    const msg = extractIncomingMessage(req.body);
     if (!msg) return;
     if (msg?.key?.fromMe) return;
 
-    const to = String(msg?.key?.cleanedSenderPn || "").trim();
+    const to = extractSenderPhone(msg);
     if (!to) return;
 
-    let text = String(msg?.messageBody || "").trim();
+    let text = extractMessageText(msg);
 
-    // Handle voice note / audio
+    // Voice note pipeline:
+    // webhook -> decrypt media -> download audio -> transcribe -> conversation engine
     if (!text) {
-      const audioUrl =
-        msg?.message?.audioMessage?.url ||
-        msg?.message?.pttMessage?.url ||
-        msg?.audioMessage?.url;
+      const audioMsg = extractAudioMessage(msg);
 
-      if (audioUrl) {
+      if (audioMsg) {
         console.log("Voice message detected");
-        text = await transcribeAudioFromUrl(audioUrl);
+
+        const decryptedUrl = await decryptWasenderMedia(msg);
+        if (!decryptedUrl) {
+          console.log("Could not decrypt media URL");
+          await sendWhatsAppText(
+            to,
+            "I received your voice note, but I could not open it properly. Please try sending it again."
+          );
+          return;
+        }
+
+        console.log("Decrypted media URL:", decryptedUrl);
+
+        text = await transcribeAudioFromUrl(decryptedUrl);
         console.log("Transcribed audio:", text);
+
+        if (!text) {
+          await sendWhatsAppText(
+            to,
+            "I could not understand that voice note clearly. Please try again, or send your story as text."
+          );
+          return;
+        }
       }
     }
 

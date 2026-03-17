@@ -11,14 +11,10 @@ const SHEET_ID = process.env.GOOGLE_SHEET_ID;
 const SESSIONS_TAB = "sessions";
 const PUBLIC_BASE_URL =
   process.env.PUBLIC_BASE_URL ||
-  process.env.RENDER_EXTERNAL_URL ||
-  "https://kahanibot-l0l7.onrender.com";
+  "https://kahanibot.up.railway.app";
 
 console.log("[BOOT] conversation.js loaded");
 
-// --------------------
-// Helpers
-// --------------------
 function isoNow() {
   return new Date().toISOString();
 }
@@ -41,7 +37,6 @@ function detectLangFromText(text, fallback = "en") {
   const t = String(text || "").trim();
 
   if (!t) return fallback;
-
   if (/[\u0A80-\u0AFF]/.test(t)) return "gu";
   if (/[\u0900-\u097F]/.test(t)) return "hi";
 
@@ -114,55 +109,6 @@ function isTopicRequest(text) {
   return phrases.some((p) => t.includes(p));
 }
 
-function parsePrivacyChoice(text) {
-  const t = String(text || "").trim().toLowerCase();
-
-  const privateWords = [
-    "private",
-    "keep private",
-    "privately",
-    "just for me",
-    "only me",
-    "personal",
-    "not public",
-    "do not share",
-    "don't share",
-    "मत शेयर करो",
-    "प्राइवेट",
-    "निजी",
-    "private rakho",
-    "શેર ન કરશો",
-    "પ્રાઇવેટ",
-    "ખાનગી",
-    "માત્ર મારી માટે",
-  ];
-
-  const shareWords = [
-    "share",
-    "shared",
-    "public",
-    "make public",
-    "story page",
-    "put it on my story page",
-    "yes share",
-    "post it",
-    "publish",
-    "share it",
-    "शेयर",
-    "पब्लिक",
-    "share karo",
-    "share kar do",
-    "શેર",
-    "પબ્લિક",
-    "મારા સ્ટોરી પેજ પર મૂકો",
-  ];
-
-  if (privateWords.some((p) => t.includes(p))) return "private";
-  if (shareWords.some((p) => t.includes(p))) return "share";
-
-  return null;
-}
-
 function isManualFinish(text) {
   const t = String(text || "").trim().toLowerCase();
 
@@ -201,6 +147,8 @@ function isManualFinish(text) {
     "બસ એટલું જ",
     "આટલું જ",
     "बस इतना ही",
+    "story ebd",
+    "story end",
   ];
 
   return phrases.some((p) => t.includes(p));
@@ -214,8 +162,6 @@ function hasReflectiveEnding(text) {
     "stay with me",
     "has stayed with me",
     "that stayed with me",
-    "those days stayed with me",
-    "that memory stayed with me",
     "for the rest of my life",
     "all my life",
     "my whole life",
@@ -224,27 +170,17 @@ function hasReflectiveEnding(text) {
     "even today",
     "even now i remember",
     "i still remember",
-    "i still remember those days",
     "i still think about it",
     "i never forgot",
     "i have never forgotten",
     "i miss those days",
     "i miss that time",
-    "i still miss her",
-    "i still miss him",
-    "that is the memory i carry with me",
-    "this is the memory i carry with me",
-    "those moments were very special",
-    "those moments were special",
-    "that was very special to me",
     "that memory remains with me",
     "it remains with me",
     "it stayed with me",
     "aaj bhi yaad hai",
     "आज भी याद है",
-    "आज भी याद आता है",
     "आज तक याद है",
-    "अब भी याद है",
     "હજુ પણ યાદ છે",
     "આજેય યાદ છે",
     "આજ સુધી યાદ છે",
@@ -343,38 +279,7 @@ function shouldTreatAsStory(text) {
   if (!t) return false;
   if (isGreetingOnly(t)) return false;
   if (isTopicRequest(t)) return false;
-  if (parsePrivacyChoice(t)) return false;
   return true;
-}
-
-function fallbackQuestion(lang) {
-  if (lang === "hi") {
-    const qs = [
-      "उस समय आपके साथ कौन था?",
-      "यह कहाँ हुआ था?",
-      "उस पल आपको सबसे ज़्यादा क्या याद है?",
-      "उस समय आपको कैसा लगा?",
-    ];
-    return qs[Math.floor(Math.random() * qs.length)];
-  }
-
-  if (lang === "gu") {
-    const qs = [
-      "તે સમયે તમારી સાથે કોણ હતું?",
-      "આ ક્યાં બન્યું હતું?",
-      "તમને તે પળમાંથી સૌથી વધુ શું યાદ છે?",
-      "તે સમયે તમને કેવું લાગ્યું?",
-    ];
-    return qs[Math.floor(Math.random() * qs.length)];
-  }
-
-  const qs = [
-    "Who was with you then?",
-    "Where did this happen?",
-    "What do you remember most from that moment?",
-    "How did you feel at that time?",
-  ];
-  return qs[Math.floor(Math.random() * qs.length)];
 }
 
 function openingText(lang) {
@@ -420,7 +325,7 @@ function askEndConfirmText(lang) {
   if (lang === "hi") {
     return (
       "धन्यवाद, आपने यह याद बहुत सुंदर तरीके से साझा की.\n\n" +
-      "क्या आप इसमें कुछ और जोड़ना चाहेंगे, या हम इसे सेव कर दें?\n" +
+      "क्या आप इसमें कुछ और जोड़ना चाहेंगे, या मैं इसे सेव कर दूँ?\n" +
       "Reply MORE or SAVE."
     );
   }
@@ -428,14 +333,14 @@ function askEndConfirmText(lang) {
   if (lang === "gu") {
     return (
       "આ યાદ તમે ખૂબ સુંદર રીતે શેર કરી.\n\n" +
-      "શું તમે તેમાં કંઈ વધુ ઉમેરવા માંગો છો, કે આપણે તેને સેવ કરી દઈએ?\n" +
+      "શું તમે તેમાં કંઈ વધુ ઉમેરવા માંગો છો, કે હું તેને સેવ કરી દઉં?\n" +
       "Reply MORE or SAVE."
     );
   }
 
   return (
     "Thank you for sharing that memory.\n\n" +
-    "Would you like to add anything else to this story, or shall we save it?\n" +
+    "Would you like to add anything else, or shall I save this story?\n" +
     "Reply MORE or SAVE."
   );
 }
@@ -443,7 +348,7 @@ function askEndConfirmText(lang) {
 function endConfirmReminderText(lang) {
   if (lang === "hi") return "अगर आप कुछ और जोड़ना चाहें तो MORE लिखें, या सेव करने के लिए SAVE लिखें।";
   if (lang === "gu") return "જો તમે કંઈ વધુ ઉમેરવા માંગો છો તો MORE લખો, અથવા સેવ કરવા માટે SAVE લખો.";
-  return "If you want to add something more, reply MORE. If you want to save it now, reply SAVE.";
+  return "If you want to add something more, reply MORE. If you want me to save it now, reply SAVE.";
 }
 
 function continueAfterEndCheckText(lang) {
@@ -452,62 +357,18 @@ function continueAfterEndCheckText(lang) {
   return "Okay, I’m listening. Please go on.";
 }
 
-function askPrivacyText(lang) {
-  if (lang === "hi") {
-    return (
-      "धन्यवाद, आपने यह कहानी मेरे साथ साझा की.\n\n" +
-      "क्या आप इस कहानी को निजी रखना चाहेंगे, या इसे अपने story page पर दिखाना चाहेंगे?\n" +
-      "Reply PRIVATE or SHARE."
-    );
-  }
-
-  if (lang === "gu") {
-    return (
-      "આ વાર્તા મારી સાથે શેર કરવા બદલ આભાર.\n\n" +
-      "શું તમે આ વાર્તાને ખાનગી રાખવા માંગો છો, કે તમારા story page પર બતાવવા માંગો છો?\n" +
-      "Reply PRIVATE or SHARE."
-    );
-  }
-
-  return (
-    "Thank you for sharing that story with me.\n\n" +
-    "Would you like to keep this story private, or would you like it to appear on your story page?\n" +
-    "Reply PRIVATE or SHARE."
-  );
-}
-
-function privacyReminderText(lang) {
-  if (lang === "hi") return "कृपया PRIVATE या SHARE लिखें।";
-  if (lang === "gu") return "કૃપા કરીને PRIVATE અથવા SHARE લખો.";
-  return "Please reply PRIVATE or SHARE.";
-}
-
-function savedPrivateText(lang, user_id) {
+function savedStoryText(lang, user_id) {
   const url = storyPageUrl(user_id);
 
   if (lang === "hi") {
-    return `आपकी कहानी निजी रूप से सेव हो गई है.\n${url}`;
+    return `आपकी कहानी सेव हो गई है.\nआप चाहें तो इस लिंक को साझा कर सकते हैं:\n${url}`;
   }
 
   if (lang === "gu") {
-    return `તમારી વાર્તા ખાનગી રીતે સેવ થઈ ગઈ છે.\n${url}`;
+    return `તમારી વાર્તા સેવ થઈ ગઈ છે.\nઇચ્છો તો આ link શેર કરી શકો:\n${url}`;
   }
 
-  return `Your story has been saved privately.\n${url}`;
-}
-
-function savedSharedText(lang, user_id) {
-  const url = storyPageUrl(user_id);
-
-  if (lang === "hi") {
-    return `आपकी कहानी आपके story page पर जोड़ दी गई है.\nआप चाहें तो यह लिंक साझा कर सकते हैं:\n${url}`;
-  }
-
-  if (lang === "gu") {
-    return `તમારી વાર્તા તમારા story page પર મૂકી દેવામાં આવી છે.\nઇચ્છો તો આ link શેર કરી શકો:\n${url}`;
-  }
-
-  return `Your story has been added to your story page.\nYou can share this link if you like:\n${url}`;
+  return `Your story has been saved.\nYou can share this link if you like:\n${url}`;
 }
 
 function stoppedText(lang) {
@@ -522,40 +383,6 @@ function topicFallback(lang) {
   return "A story that has stayed with you";
 }
 
-function looksQuestionLike(text) {
-  const t = String(text || "").trim().toLowerCase();
-  if (!t) return false;
-  if (/[?؟]$/.test(t)) return true;
-
-  const starters = [
-    "who ",
-    "what ",
-    "where ",
-    "when ",
-    "why ",
-    "how ",
-    "do you ",
-    "did you ",
-    "can you ",
-    "would you ",
-    "क्या ",
-    "कौन ",
-    "कहाँ ",
-    "कैसा ",
-    "कैसे ",
-    "શું ",
-    "કોણ ",
-    "ક્યાં ",
-    "કેવું ",
-    "કેવી રીતે ",
-  ];
-
-  return starters.some((s) => t.startsWith(s));
-}
-
-// --------------------
-// MANAN deck
-// --------------------
 let MANAN_CACHE = null;
 
 function loadMananCards() {
@@ -585,9 +412,6 @@ function randomTopic(lang = "en") {
   return String(c?.[lang] || c?.en || c?.hi || c?.gu || topicFallback(lang)).trim();
 }
 
-// --------------------
-// Sheets session store
-// --------------------
 async function loadSession(user_id) {
   const sheets = await getSheetsClient();
   const range = `${SESSIONS_TAB}!A:Z`;
@@ -607,6 +431,7 @@ async function loadSession(user_id) {
   const idxMsgCount = headerIndex(headers, "msg_count");
   const idxSeed = headerIndex(headers, "seed_prompt");
   const idxLastPrompt = headerIndex(headers, "last_agent_prompt");
+  const idxLastQType = headerIndex(headers, "last_question_type");
 
   for (let r = 1; r < rows.length; r++) {
     const row = rows[r] || [];
@@ -623,6 +448,7 @@ async function loadSession(user_id) {
         msg_count: Number(row[idxMsgCount] || 0),
         seed_prompt: idxSeed === -1 ? "" : row[idxSeed] || "",
         last_agent_prompt: idxLastPrompt === -1 ? "" : row[idxLastPrompt] || "",
+        last_question_type: idxLastQType === -1 ? "none" : row[idxLastQType] || "none",
       };
     }
   }
@@ -655,6 +481,7 @@ async function upsertSession(session) {
 
   const idxSeed = headerIndex(headers, "seed_prompt");
   const idxLastPrompt = headerIndex(headers, "last_agent_prompt");
+  const idxLastQType = headerIndex(headers, "last_question_type");
   const idxUpdated = headerIndex(headers, "updated_at");
   const idxCreated = headerIndex(headers, "created_at");
 
@@ -681,6 +508,7 @@ async function upsertSession(session) {
 
   if (idxSeed !== -1) outRow[idxSeed] = session.seed_prompt || "";
   if (idxLastPrompt !== -1) outRow[idxLastPrompt] = session.last_agent_prompt || "";
+  if (idxLastQType !== -1) outRow[idxLastQType] = session.last_question_type || "none";
 
   if (idxUpdated !== -1) outRow[idxUpdated] = isoNow();
   if (idxCreated !== -1 && isNew) outRow[idxCreated] = isoNow();
@@ -706,57 +534,22 @@ async function resetSession(user_id, lang = "en") {
     msg_count: 0,
     seed_prompt: "",
     last_agent_prompt: "",
+    last_question_type: "none",
   });
 }
 
 function buildAiInput({ seed_prompt, fullStory }) {
   const themeBlock = seed_prompt ? `Theme: ${seed_prompt}` : "Theme:";
   const storyBlock = fullStory ? `Full story so far:\n${fullStory}` : "Full story so far:";
-
   return `${themeBlock}\n\n${storyBlock}`;
-}
-
-function adaptAiTurnToFlow({ aiTurn, lang, last_agent_prompt }) {
-  if (!aiTurn) {
-    return {
-      mode: "ASK",
-      text: fallbackQuestion(lang),
-    };
-  }
-
-  const lastWasQuestion = looksQuestionLike(last_agent_prompt);
-  const thisIsQuestionMode = aiTurn.mode === "ASK" || aiTurn.mode === "EVOKE";
-
-  if (lastWasQuestion && thisIsQuestionMode) {
-    const text =
-      aiTurn.analysis?.line1 ||
-      aiTurn.analysis?.line2 ||
-      (lang === "hi"
-        ? "मैं आपकी कहानी सुन रहा/रही हूँ।"
-        : lang === "gu"
-        ? "હું તમારી વાર્તા સાંભળી રહ્યો/રહી છું."
-        : "I’m listening to your story.");
-
-    return {
-      mode: "REFLECT",
-      text,
-      analysis: {
-        mode: "REFLECT",
-        line1: text,
-        line2: "",
-        question: "",
-      },
-    };
-  }
-
-  return aiTurn;
 }
 
 async function buildStoryReply({
   lang,
   seed_prompt,
   fullStory,
-  last_agent_prompt,
+  last_question_type,
+  msg_count,
 }) {
   const aiInput = buildAiInput({
     seed_prompt,
@@ -766,19 +559,21 @@ async function buildStoryReply({
   const aiResult = await generateStoryTurn({
     lang,
     story_text: aiInput,
+    last_question_type: last_question_type || "none",
+    msg_count: Number(msg_count || 0),
   });
 
-  const adapted = adaptAiTurnToFlow({
-    aiTurn: aiResult,
-    lang,
-    last_agent_prompt,
-  });
-
-  if (adapted) return adapted;
+  if (aiResult) return aiResult;
 
   return {
     mode: "ASK",
-    text: fallbackQuestion(lang),
+    text:
+      lang === "hi"
+        ? "मैं सुन रहा/रही हूँ.\nउस पल की कौन-सी बात आपको सबसे साफ़ याद है?"
+        : lang === "gu"
+        ? "હું સાંભળું છું.\nતે પળની કઈ વાત તમને સૌથી વધુ સ્પષ્ટ યાદ છે?"
+        : "I’m listening.\nWhat part of that moment do you remember most clearly?",
+    question_type: "detail",
   };
 }
 
@@ -798,7 +593,7 @@ function shouldSuggestEndCheck({ msg, story_text, msg_count }) {
   return seemsLikeNaturalEnding(latest);
 }
 
-async function finalizeStory({ user_id, lang, story_text, publish }) {
+async function finalizeStory({ user_id, lang, story_text }) {
   const polished = await polishStory({
     lang,
     story_text,
@@ -809,7 +604,7 @@ async function finalizeStory({ user_id, lang, story_text, publish }) {
   await saveStory({
     user_id,
     story_text: finalStoryText,
-    publish,
+    publish: true,
     title: polished?.title || "",
     polished_story_text: finalStoryText,
     transcript_text: String(story_text || "").trim(),
@@ -817,7 +612,7 @@ async function finalizeStory({ user_id, lang, story_text, publish }) {
 
   await resetSession(user_id, lang);
 
-  return publish ? savedSharedText(lang, user_id) : savedPrivateText(lang, user_id);
+  return savedStoryText(lang, user_id);
 }
 
 async function processTurn({ user_id, text, forcedLang }) {
@@ -835,6 +630,7 @@ async function processTurn({ user_id, text, forcedLang }) {
       msg_count: 0,
       seed_prompt: "",
       last_agent_prompt: "",
+      last_question_type: "none",
     };
 
     await upsertSession(session);
@@ -851,11 +647,12 @@ async function processTurn({ user_id, text, forcedLang }) {
       state: "STOPPED",
       lang,
       last_agent_prompt: stoppedText(lang),
+      last_question_type: "none",
     });
     return stoppedText(lang);
   }
 
-  if (lower === "start") {
+  if (lower === "start" || lower === "reset") {
     await resetSession(user_id, lang);
     const open = openingText(lang);
     await upsertSession({
@@ -868,23 +665,7 @@ async function processTurn({ user_id, text, forcedLang }) {
       msg_count: 0,
       seed_prompt: "",
       last_agent_prompt: open,
-    });
-    return open;
-  }
-
-  if (lower === "reset") {
-    await resetSession(user_id, lang);
-    const open = openingText(lang);
-    await upsertSession({
-      user_id,
-      state: "READY",
-      story_text: "",
-      story_id: "",
-      consent: true,
-      lang,
-      msg_count: 0,
-      seed_prompt: "",
-      last_agent_prompt: open,
+      last_question_type: "none",
     });
     return open;
   }
@@ -894,30 +675,14 @@ async function processTurn({ user_id, text, forcedLang }) {
   }
 
   if (session.state === "CONFIRM_END") {
-    const privacyChoice = parsePrivacyChoice(msg);
-    if (privacyChoice) {
-      const savedReply = await finalizeStory({
-        user_id,
-        lang,
-        story_text: session.story_text,
-        publish: privacyChoice === "share",
-      });
-      return savedReply;
-    }
-
     const endChoice = parseEndConfirmation(msg);
 
     if (endChoice === "SAVE" || isManualFinish(msg)) {
-      const privacyMsg = askPrivacyText(lang);
-
-      await upsertSession({
-        ...session,
-        state: "ASK_PRIVACY",
+      return await finalizeStory({
+        user_id,
         lang,
-        last_agent_prompt: privacyMsg,
+        story_text: session.story_text,
       });
-
-      return privacyMsg;
     }
 
     if (endChoice === "MORE") {
@@ -928,6 +693,7 @@ async function processTurn({ user_id, text, forcedLang }) {
         state: "COLLECTING",
         lang,
         last_agent_prompt: continueMsg,
+        last_question_type: "none",
       });
 
       return continueMsg;
@@ -941,7 +707,8 @@ async function processTurn({ user_id, text, forcedLang }) {
         lang,
         seed_prompt: session.seed_prompt || "",
         fullStory: continuedStory,
-        last_agent_prompt: session.last_agent_prompt || "",
+        last_question_type: session.last_question_type || "none",
+        msg_count: continuedCount,
       });
 
       if (aiTurn?.mode === "CLOSE") {
@@ -954,12 +721,14 @@ async function processTurn({ user_id, text, forcedLang }) {
           story_text: continuedStory,
           msg_count: continuedCount,
           last_agent_prompt: confirmMsg,
+          last_question_type: "none",
         });
 
         return confirmMsg;
       }
 
-      const replyText = aiTurn?.text || fallbackQuestion(lang);
+      const replyText = aiTurn?.text || "";
+      const nextQType = aiTurn?.question_type || "none";
 
       await upsertSession({
         ...session,
@@ -968,6 +737,7 @@ async function processTurn({ user_id, text, forcedLang }) {
         story_text: continuedStory,
         msg_count: continuedCount,
         last_agent_prompt: replyText,
+        last_question_type: nextQType,
       });
 
       return replyText;
@@ -978,30 +748,9 @@ async function processTurn({ user_id, text, forcedLang }) {
       ...session,
       lang,
       last_agent_prompt: reminder,
+      last_question_type: "none",
     });
     return reminder;
-  }
-
-  if (session.state === "ASK_PRIVACY") {
-    const choice = parsePrivacyChoice(msg);
-    if (!choice) {
-      const reminder = privacyReminderText(lang);
-      await upsertSession({
-        ...session,
-        lang,
-        last_agent_prompt: reminder,
-      });
-      return reminder;
-    }
-
-    const savedReply = await finalizeStory({
-      user_id,
-      lang,
-      story_text: session.story_text,
-      publish: choice === "share",
-    });
-
-    return savedReply;
   }
 
   if (!msg || isGreetingOnly(msg)) {
@@ -1011,6 +760,7 @@ async function processTurn({ user_id, text, forcedLang }) {
       state: "READY",
       lang,
       last_agent_prompt: open,
+      last_question_type: "none",
     });
     return open;
   }
@@ -1025,6 +775,7 @@ async function processTurn({ user_id, text, forcedLang }) {
       lang,
       seed_prompt: topic,
       last_agent_prompt: reply,
+      last_question_type: "none",
     });
 
     return reply;
@@ -1037,6 +788,7 @@ async function processTurn({ user_id, text, forcedLang }) {
       state: "READY",
       lang,
       last_agent_prompt: open,
+      last_question_type: "none",
     });
     return open;
   }
@@ -1045,18 +797,11 @@ async function processTurn({ user_id, text, forcedLang }) {
   const updatedCount = Number(session.msg_count || 0) + 1;
 
   if (isManualFinish(msg) || lower === "save") {
-    const privacyMsg = askPrivacyText(lang);
-  
-    await upsertSession({
-      ...session,
-      state: "ASK_PRIVACY",
+    return await finalizeStory({
+      user_id,
       lang,
-      story_text: session.story_text || "",
-      msg_count: Number(session.msg_count || 0),
-      last_agent_prompt: privacyMsg,
+      story_text: updatedStory,
     });
-  
-    return privacyMsg;
   }
 
   if (
@@ -1075,6 +820,7 @@ async function processTurn({ user_id, text, forcedLang }) {
       story_text: updatedStory,
       msg_count: updatedCount,
       last_agent_prompt: confirmMsg,
+      last_question_type: "none",
     });
 
     return confirmMsg;
@@ -1084,7 +830,8 @@ async function processTurn({ user_id, text, forcedLang }) {
     lang,
     seed_prompt: session.seed_prompt || "",
     fullStory: updatedStory,
-    last_agent_prompt: session.last_agent_prompt || "",
+    last_question_type: session.last_question_type || "none",
+    msg_count: updatedCount,
   });
 
   if (aiTurn?.mode === "CLOSE") {
@@ -1097,12 +844,14 @@ async function processTurn({ user_id, text, forcedLang }) {
       story_text: updatedStory,
       msg_count: updatedCount,
       last_agent_prompt: confirmMsg,
+      last_question_type: "none",
     });
 
     return confirmMsg;
   }
 
-  const replyText = aiTurn?.text || fallbackQuestion(lang);
+  const replyText = aiTurn?.text || "";
+  const nextQType = aiTurn?.question_type || "none";
 
   await upsertSession({
     ...session,
@@ -1111,14 +860,12 @@ async function processTurn({ user_id, text, forcedLang }) {
     story_text: updatedStory,
     msg_count: updatedCount,
     last_agent_prompt: replyText,
+    last_question_type: nextQType,
   });
 
   return replyText;
 }
 
-// --------------------
-// WhatsApp flow
-// --------------------
 export async function handleMessage({ from, text }) {
   const user_id = String(from || "");
   return processTurn({
@@ -1128,9 +875,6 @@ export async function handleMessage({ from, text }) {
   });
 }
 
-// --------------------
-// Local app / curl testing flow
-// --------------------
 export async function handleAppTurn({ user_id, text, lang }) {
   const reply = await processTurn({
     user_id: String(user_id || ""),

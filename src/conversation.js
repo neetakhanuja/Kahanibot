@@ -117,8 +117,7 @@ function shouldTreatAsMemory(text) {
   return true;
 }
 
-// Optional MANAN topic fallback if user explicitly asks.
-// The human moderator can still send cards manually; this just preserves a safe fallback.
+// Optional fallback for topic requests
 let MANAN_CACHE = null;
 
 function loadMananCards() {
@@ -355,10 +354,10 @@ async function buildListenerReply({
     mode: "ACK",
     text:
       lang === "hi"
-        ? "मैं सुन रहा/रही हूँ।"
+        ? "यह याद बहुत सजीव लग रही है।"
         : lang === "gu"
-        ? "હું સાંભળું છું."
-        : "I'm listening.",
+        ? "આ યાદ ખૂબ જીવંત લાગે છે."
+        : "That sounds like a vivid memory.",
   };
 }
 

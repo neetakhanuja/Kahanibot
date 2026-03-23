@@ -1,5 +1,5 @@
 // src/ai.js
-// KahaniBot AI: WhatsApp listener for reminiscence sharing
+// KahaniBot AI: reminiscence listener for WhatsApp
 
 const AI_ENABLED = String(process.env.AI_ENABLED || "").toLowerCase() === "true";
 const AI_MODEL = process.env.AI_MODEL || "gpt-4.1-mini";
@@ -27,10 +27,23 @@ function cleanLine(text, fallback = "") {
 function ensureQuestion(text, fallback) {
   let q = String(text || "").trim();
   if (!q) return fallback;
+
   if (!/[?؟]$/.test(q)) {
-    q = q.replace(/[.。!！]+$/g, "").trim() + "?";
+    q = q.replace(/[.!]+$/g, "").trim() + "?";
   }
+
   return q;
+}
+
+function stripQuestionFromLine(text) {
+  let line = String(text || "").trim();
+  if (!line) return "";
+
+  if (/[?؟]$/.test(line)) {
+    line = line.replace(/[?؟]+$/g, "").trim();
+  }
+
+  return line;
 }
 
 function parseTaggedBlock(raw) {
@@ -48,36 +61,18 @@ function parseTaggedBlock(raw) {
 }
 
 function fallbackAck(lang) {
-  if (lang === "hi") return "मैं आपकी बात सुन रहा/रही हूँ।";
-  if (lang === "gu") return "હું તમારી વાત સાંભળું છું.";
+  if (lang === "hi") return "मैं आपकी बात ध्यान से सुन रहा हूँ।";
+  if (lang === "gu") return "હું તમારી વાત ધ્યાનથી સાંભળું છું.";
   return "I'm listening.";
 }
 
 function fallbackQuestion(lang) {
-  if (lang === "hi") return "उस बात में आपको सबसे ज़्यादा क्या याद है?";
-  if (lang === "gu") return "તે વાતમાં તમને સૌથી વધુ શું યાદ છે?";
-  return "What do you remember most about that?";
+  if (lang === "hi") return "उस समय आपको सबसे ज़्यादा क्या याद है?";
+  if (lang === "gu") return "તે સમયે તમને સૌથી વધુ શું યાદ છે?";
+  return "What do you remember most about that moment?";
 }
 
-function isGenericQuestion(q = "") {
-  const t = String(q || "").trim().toLowerCase();
-  return [
-    "what happened next?",
-    "and what happened next?",
-    "tell me more?",
-    "can you tell me more?",
-    "would you like to tell me more?",
-    "what do you remember?",
-    "can you say more?",
-    "और क्या हुआ?",
-    "और फिर क्या हुआ?",
-    "क्या आप और बताना चाहेंगे?",
-    "પછી શું થયું?",
-    "શું તમે વધુ કહેશો?",
-  ].includes(t);
-}
-
-async function callOpenAI({ system, user, temperature = 0.45 }) {
+async function callOpenAI({ system, user, temperature = 0.5 }) {
   if (!AI_ENABLED) return null;
   if (!OPENAI_API_KEY) return null;
 
@@ -102,6 +97,7 @@ async function callOpenAI({ system, user, temperature = 0.45 }) {
 
     const data = await res.json();
     const text = data?.choices?.[0]?.message?.content;
+
     if (!text) return null;
 
     return String(text).trim();
@@ -117,47 +113,76 @@ export async function analyzeListenerTurn({
   last_bot_mode = "none",
 }) {
   try {
-    const system =
-      `You are KahaniBot, a warm WhatsApp listener for older adults sharing memories.\n` +
-      `Write in ${langLabel(lang)}.\n\n` +
-      `Your role is not to collect a finished story.\n` +
-      `Your role is to create a feeling of being heard.\n\n` +
-      `Behavior rules:\n` +
-      `- The user should always speak more than you.\n` +
-      `- Keep your response short.\n` +
-      `- Do not dominate the conversation.\n` +
-      `- Do not sound like an interviewer, therapist, teacher, moderator, or poet.\n` +
-      `- Do not summarize the whole story.\n` +
-      `- Do not talk about saving, finishing, publishing, or links.\n` +
-      `- Treat fragments, partial memories, and small details as valid.\n` +
-      `- Acknowledge specific details when possible.\n` +
-      `- Avoid generic praise like "That is beautiful" or "That is meaningful".\n` +
-      `- Avoid repetition in wording and question style.\n` +
-      `- Ask a question only sometimes, not every turn.\n` +
-      `- If you ask, ask only one gentle follow-up.\n` +
-      `- Good follow-ups explore a person, place, small action, feeling, or sensory detail.\n` +
-      `- If the user already shared enough for this turn, you may simply acknowledge and stop.\n` +
-      `- Occasionally you may use one small emoji such as 🙂 or 🙏 or 😊.\n` +
-      `- Never place an emoji inside a question or right before a question mark.\n` +
-      `- If the previous bot mode was ASK, prefer ACK or CLOSE unless a question is truly needed.\n` +
-      `- Previous bot mode was: ${last_bot_mode || "none"}.\n\n` +
-      `Choose exactly one mode:\n` +
-      `ACK = brief acknowledgment only\n` +
-      `ASK = brief acknowledgment plus one gentle follow-up question\n` +
-      `CLOSE = gentle resting response with no question\n\n` +
-      `Output exactly in this format:\n` +
-      `MODE: ACK or ASK or CLOSE\n` +
-      `LINE1: one short response line\n` +
-      `QUESTION: one gentle question only if MODE is ASK, otherwise leave blank\n`;
+    const system = `
+You are KahaniBot.
 
-    const user =
-      `Message count in this conversation: ${Number(msg_count || 0)}\n\n` +
-      `Conversation so far:\n${conversation_text}`;
+You are a warm WhatsApp listener for older adults sharing memories.
 
-    const out = await callOpenAI({ system, user, temperature: 0.5 });
+Write in ${langLabel(lang)}.
+
+Design principles:
+
+The user should speak more than the bot.
+
+Responses should be short.
+
+Avoid dominating the conversation.
+
+Listener behavior:
+
+Acknowledge concrete details from the memory.
+
+Example:
+"Shelling peas in the afternoon sun sounds like one of those quiet everyday moments."
+
+Avoid generic responses like:
+"I'm listening."
+"That sounds nice."
+
+Ask questions only occasionally.
+
+Important rule:
+If the previous bot message asked a question,
+do NOT ask another question.
+
+Instead give a warm acknowledgment.
+
+If you ask a question:
+- ask only ONE question
+- keep it gentle
+- ask about a person, place, or feeling
+
+Emoji rule:
+Occasionally you may use 🙂 or 🙏
+but use them rarely.
+
+Response format:
+
+MODE: ACK or ASK
+LINE1: short acknowledgment
+QUESTION: only if MODE is ASK
+
+Previous bot mode: ${last_bot_mode}
+`;
+
+    const user = `
+Conversation so far:
+
+${conversation_text}
+
+Message count: ${msg_count}
+`;
+
+    const out = await callOpenAI({
+      system,
+      user,
+      temperature: 0.45,
+    });
+
     if (!out) return null;
 
     const parsed = parseTaggedBlock(out);
+
     if (!parsed.mode) return null;
 
     return {
@@ -184,24 +209,20 @@ export async function generateListenerTurn({
   });
 
   if (!analysis) {
-    if (last_bot_mode === "ASK") {
-      return {
-        mode: "ACK",
-        text: fallbackAck(lang),
-      };
-    }
-
     return {
-      mode: "ASK",
-      text: `${fallbackAck(lang)}\n${fallbackQuestion(lang)}`,
+      mode: "ACK",
+      text: fallbackAck(lang),
     };
   }
 
-  const line1 = analysis.line1 || fallbackAck(lang);
+  const line1 = stripQuestionFromLine(
+    analysis.line1 || fallbackAck(lang)
+  );
 
-  if (analysis.mode === "CLOSE") {
+  // Prevent two questions in a row
+  if (last_bot_mode === "ASK") {
     return {
-      mode: "CLOSE",
+      mode: "ACK",
       text: line1,
     };
   }
@@ -213,60 +234,60 @@ export async function generateListenerTurn({
     };
   }
 
-  let question = ensureQuestion(
+  const question = ensureQuestion(
     analysis.question,
     fallbackQuestion(lang)
   );
 
-  if (isGenericQuestion(question)) {
-    question = fallbackQuestion(lang);
-  }
-
   return {
     mode: "ASK",
-    text: [line1, question].filter(Boolean).join("\n"),
+    text: [line1, question].join("\n"),
   };
 }
 
 /*
-  Keep this for optional background cleaning/logging if needed later.
-  It is no longer central to the live study behavior.
+Optional story polishing
 */
 export async function polishStory({ lang, story_text }) {
   const raw = String(story_text || "").trim();
   if (!raw) return null;
 
-  const system =
-    `You lightly clean spoken reminiscence text into readable prose.\n` +
-    `Write in ${langLabel(lang)}.\n\n` +
-    `Rules:\n` +
-    `- Keep the speaker's meaning.\n` +
-    `- Do not add new details.\n` +
-    `- Do not exaggerate emotions.\n` +
-    `- Remove obvious repetition only.\n` +
-    `- Keep the language simple.\n\n` +
-    `Return ONLY valid JSON with keys "title" and "body".\n`;
+  const system = `
+Clean spoken reminiscence text.
+
+Write in ${langLabel(lang)}.
+
+Keep the meaning the same.
+
+Remove repetition.
+
+Return JSON with title and body.
+`;
 
   const user = `Transcript:\n${raw}`;
 
-  const out = await callOpenAI({ system, user, temperature: 0.2 });
+  const out = await callOpenAI({
+    system,
+    user,
+    temperature: 0.2,
+  });
+
   if (!out) return null;
 
   try {
     const start = out.indexOf("{");
     const end = out.lastIndexOf("}");
-    const jsonStr = start >= 0 && end >= 0 ? out.slice(start, end + 1) : out;
+
+    const jsonStr =
+      start >= 0 && end >= 0
+        ? out.slice(start, end + 1)
+        : out;
+
     const obj = JSON.parse(jsonStr);
 
     return {
-      title:
-        String(obj.title || "").trim() ||
-        (lang === "hi"
-          ? "एक स्मृति"
-          : lang === "gu"
-          ? "એક યાદ"
-          : "A Memory"),
-      body: String(obj.body || raw).trim(),
+      title: obj.title || "A Memory",
+      body: obj.body || raw,
     };
   } catch {
     return null;

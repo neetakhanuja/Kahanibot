@@ -59,9 +59,17 @@ function previousUserMessage(conversationText) {
   return lines[lines.length - 2];
 }
 
+function wordCount(text) {
+  return String(text || "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean).length;
+}
+
 function isShortReply(text) {
   const t = String(text || "").trim().toLowerCase();
-  return [
+
+  const exactShorts = [
     "yes",
     "yeah",
     "yup",
@@ -78,6 +86,9 @@ function isShortReply(text) {
     "i agree",
     "haha",
     "lol",
+    "true",
+    "right",
+    "maybe",
     "बस",
     "हाँ",
     "हां",
@@ -85,7 +96,41 @@ function isShortReply(text) {
     "હા",
     "હું",
     "કંઈ નહીં",
-  ].includes(t);
+  ];
+
+  if (exactShorts.includes(t)) return true;
+  if (wordCount(t) <= 3) return true;
+
+  const shortPatterns = [
+    /^yes\b/,
+    /^no\b/,
+    /^haan\b/,
+    /^hmm\b/,
+    /^haha\b/,
+    /^i agree\b/,
+    /^yes i\b/,
+    /^no i\b/,
+    /^ok\b/,
+    /^okay\b/,
+  ];
+
+  return shortPatterns.some((rx) => rx.test(t));
+}
+
+function isRichNarrativeTurn(text) {
+  const latest = String(text || "").trim().toLowerCase();
+  const wc = wordCount(latest);
+
+  if (!latest) return false;
+  if (isShortReply(latest)) return false;
+
+  if (wc >= 18) return true;
+  if (wc >= 12 && /[,.]/.test(latest)) return true;
+  if (wc >= 14 && /\b(when|while|because|still|after|before|then|used to|remember|felt|saw|heard|smell|sound)\b/i.test(latest)) {
+    return true;
+  }
+
+  return false;
 }
 
 function hasSubstantialNewDetail(latestUser, previousUser = "") {
@@ -94,20 +139,21 @@ function hasSubstantialNewDetail(latestUser, previousUser = "") {
 
   if (!latest) return false;
   if (isShortReply(latest)) return false;
-  if (latest.length >= 45) return true;
-  if (latest.includes(",") || latest.includes(" and ") || latest.includes(" but ")) return true;
-  if (
-    /(because|when|while|still|even now|smell|sound|felt|saw|remember|cousin|family|friend|tree|mango|courtyard|grandmother|mother|father|village|school|road|field|sun|afternoon)/i.test(
-      latest
-    )
-  ) {
-    return true;
-  }
+
+  // Much stricter than before:
+  // only richer, more developed turns should allow another question
+  if (isRichNarrativeTurn(latest)) return true;
 
   const latestNorm = normalizeForCompare(latest);
   const prevNorm = normalizeForCompare(prev);
 
-  if (latestNorm && prevNorm && latestNorm !== prevNorm && latestNorm.length > prevNorm.length + 10) {
+  if (
+    latestNorm &&
+    prevNorm &&
+    latestNorm !== prevNorm &&
+    wordCount(latestNorm) >= 12 &&
+    latestNorm.length > prevNorm.length + 20
+  ) {
     return true;
   }
 
@@ -219,6 +265,34 @@ function groundedFallbackQuestion(lang, latestUser = "") {
   return "What do you remember most about that?";
 }
 
+function shouldAskThisTurn({
+  latestUser,
+  last_bot_mode = "none",
+  question_streak = 0,
+  turns_since_question = 99,
+  msg_count = 0,
+}) {
+  if (!latestUser) return false;
+
+  // Never make the bot feel interview-like early on
+  if (Number(msg_count || 0) <= 1) return false;
+
+  // Never ask right after an ask
+  if (last_bot_mode === "ASK") return false;
+
+  // Cooldown memory from session
+  if (Number(question_streak || 0) >= 1) return false;
+  if (Number(turns_since_question || 0) < 2) return false;
+
+  // Short answers should never trigger new questions
+  if (isShortReply(latestUser)) return false;
+
+  // Only richer narrative turns justify asking
+  if (!isRichNarrativeTurn(latestUser)) return false;
+
+  return true;
+}
+
 async function callOpenAI({ system, user, temperature = 0.6 }) {
   if (!AI_ENABLED) return null;
   if (!OPENAI_API_KEY) return null;
@@ -257,10 +331,20 @@ export async function generateListenerTurn({
   msg_count = 0,
   last_bot_reply = "",
   last_bot_mode = "none",
+  question_streak = 0,
+  turns_since_question = 99,
 }) {
   const latestUser = latestUserMessage(conversation_text);
   const prevUser = previousUserMessage(conversation_text);
   const substantialNewDetail = hasSubstantialNewDetail(latestUser, prevUser);
+
+  const askAllowed = shouldAskThisTurn({
+    latestUser,
+    last_bot_mode,
+    question_streak,
+    turns_since_question,
+    msg_count,
+  });
 
   const system = `You are KahaniBot, a conversational storytelling listener designed to encourage older adults to share life memories inspired by reflection cards.
 
@@ -297,12 +381,14 @@ Available behavior modes:
 
 Use them naturally. Do not mention the mode name.
 
-Important rhythm rules:
-- If the previous bot message asked a question, strongly prefer a non-question mode now.
-- Only ask again if the latest user message adds substantial new detail and a question would genuinely deepen the memory.
-- For very short replies like "yes", "no", "hmm", "haha", or "i agree", prefer LOW_PRESSURE_ENCOURAGEMENT, ACKNOWLEDGMENT, or GENTLE_CLOSURE.
+Hard rhythm rules:
+- Most replies should NOT contain a question.
+- If the previous bot message asked a question, do not ask another one now.
+- After any recent question, leave at least two bot turns before asking again.
+- If the user gives a short reply like "yes", "no", "hmm", "haha", or "i agree", do NOT ask a question.
+- Ask only when the latest user turn contains rich new narrative detail.
 - Do not ask just to keep the conversation going.
-- Ask only if there is something genuinely worth asking.
+- Many good replies are simple acknowledgments with no question.
 
 Grounding rule:
 - Base your response mainly on the latest user message, while staying aware of the recent conversation.
@@ -330,8 +416,17 @@ ${last_bot_reply || "(none)"}
 Previous bot mode:
 ${last_bot_mode || "none"}
 
+Question streak:
+${Number(question_streak || 0)}
+
+Turns since question:
+${Number(turns_since_question || 0)}
+
 Latest user adds substantial new detail:
 ${substantialNewDetail ? "yes" : "no"}
+
+Question allowed this turn:
+${askAllowed ? "yes" : "no"}
 
 Message count:
 ${Number(msg_count || 0)}
@@ -349,17 +444,11 @@ Write one natural WhatsApp reply.`;
     parsed = parseJsonMaybe(raw);
   }
 
+  // Fallback should be calm and non-questioning
   if (!parsed || !parsed.reply) {
-    if (last_bot_mode === "ASK") {
-      return {
-        mode: "ACKNOWLEDGMENT",
-        text: groundedFallbackAck(lang, latestUser),
-      };
-    }
-
     return {
-      mode: "GENTLE_CONTINUATION",
-      text: `${groundedFallbackAck(lang, latestUser)}\n${groundedFallbackQuestion(lang, latestUser)}`,
+      mode: "ACKNOWLEDGMENT",
+      text: groundedFallbackAck(lang, latestUser),
     };
   }
 
@@ -383,9 +472,14 @@ Write one natural WhatsApp reply.`;
     shouldAsk = false;
   }
 
-  // soft guard: no question after question unless strong new detail
+  // Model cannot override hard rhythm rule
+  if (!askAllowed) {
+    shouldAsk = false;
+  }
+
+  // Extra guard: if previous bot asked, do not ask again
   const userAskedQuestion = /[?؟]$/.test(String(latestUser || "").trim());
-  if (last_bot_mode === "ASK" && !userAskedQuestion && !substantialNewDetail) {
+  if (last_bot_mode === "ASK" && !userAskedQuestion) {
     shouldAsk = false;
   }
 
@@ -396,6 +490,7 @@ Write one natural WhatsApp reply.`;
 
   if (!shouldAsk) {
     reply = stripAllQuestionSentences(reply);
+
     if (!reply) {
       if (lang === "hi" && isShortReply(latestUser)) {
         reply = "कोई बात नहीं। कभी-कभी यादें धीरे-धीरे आती हैं।";
@@ -413,17 +508,21 @@ Write one natural WhatsApp reply.`;
     }
   }
 
-  // if question allowed, keep only one question
   if (shouldAsk) {
     if (!/[?؟]/.test(reply)) {
-      reply = `${reply}\n${groundedFallbackQuestion(lang, latestUser)}`.trim();
+      const ackOnly = stripAllQuestionSentences(reply) || groundedFallbackAck(lang, latestUser);
+      reply = `${ackOnly}\n${groundedFallbackQuestion(lang, latestUser)}`.trim();
     }
     reply = keepAtMostOneQuestion(reply);
   }
 
   // remove emoji from question lines
   if (/[?؟]/.test(reply)) {
-    const lines = reply.split("\n").map((x) => x.trim()).filter(Boolean);
+    const lines = reply
+      .split("\n")
+      .map((x) => x.trim())
+      .filter(Boolean);
+
     reply = lines
       .map((line) => (/[\?؟]$/.test(line) ? stripEmojiFromQuestion(line) : line))
       .join("\n");

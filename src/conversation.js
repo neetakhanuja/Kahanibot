@@ -215,6 +215,8 @@ async function loadSession(user_id) {
   const idxLastPrompt = headerIndex(headers, "last_agent_prompt");
   const idxLastQType = headerIndex(headers, "last_question_type");
   const idxLastBotMode = headerIndex(headers, "last_bot_mode");
+  const idxQuestionStreak = headerIndex(headers, "question_streak");
+  const idxTurnsSinceQuestion = headerIndex(headers, "turns_since_question");
 
   for (let r = 1; r < rows.length; r++) {
     const row = rows[r] || [];
@@ -233,6 +235,8 @@ async function loadSession(user_id) {
         last_agent_prompt: idxLastPrompt === -1 ? "" : row[idxLastPrompt] || "",
         last_question_type: idxLastQType === -1 ? "none" : row[idxLastQType] || "none",
         last_bot_mode: idxLastBotMode === -1 ? "none" : row[idxLastBotMode] || "none",
+        question_streak: idxQuestionStreak === -1 ? 0 : Number(row[idxQuestionStreak] || 0),
+        turns_since_question: idxTurnsSinceQuestion === -1 ? 99 : Number(row[idxTurnsSinceQuestion] || 99),
       };
     }
   }
@@ -267,6 +271,8 @@ async function upsertSession(session) {
   const idxLastPrompt = headerIndex(headers, "last_agent_prompt");
   const idxLastQType = headerIndex(headers, "last_question_type");
   const idxLastBotMode = headerIndex(headers, "last_bot_mode");
+  const idxQuestionStreak = headerIndex(headers, "question_streak");
+  const idxTurnsSinceQuestion = headerIndex(headers, "turns_since_question");
   const idxUpdated = headerIndex(headers, "updated_at");
   const idxCreated = headerIndex(headers, "created_at");
 
@@ -295,6 +301,8 @@ async function upsertSession(session) {
   if (idxLastPrompt !== -1) outRow[idxLastPrompt] = session.last_agent_prompt || "";
   if (idxLastQType !== -1) outRow[idxLastQType] = session.last_question_type || "none";
   if (idxLastBotMode !== -1) outRow[idxLastBotMode] = session.last_bot_mode || "none";
+  if (idxQuestionStreak !== -1) outRow[idxQuestionStreak] = String(session.question_streak || 0);
+  if (idxTurnsSinceQuestion !== -1) outRow[idxTurnsSinceQuestion] = String(session.turns_since_question ?? 99);
 
   if (idxUpdated !== -1) outRow[idxUpdated] = isoNow();
   if (idxCreated !== -1 && isNew) outRow[idxCreated] = isoNow();
@@ -322,6 +330,8 @@ async function resetSession(user_id, lang = "en") {
     last_agent_prompt: "",
     last_question_type: "none",
     last_bot_mode: "none",
+    question_streak: 0,
+    turns_since_question: 99,
   });
 }
 
@@ -332,6 +342,8 @@ async function buildListenerReply({
   msg_count,
   last_bot_reply,
   last_bot_mode,
+  question_streak,
+  turns_since_question,
 }) {
   const promptPrefix = seed_prompt ? `Today's prompt: ${seed_prompt}\n\n` : "";
   const recentConversation = lastTurns(fullConversation, 10);
@@ -342,6 +354,8 @@ async function buildListenerReply({
     msg_count: Number(msg_count || 0),
     last_bot_reply: last_bot_reply || "",
     last_bot_mode: last_bot_mode || "none",
+    question_streak: Number(question_streak || 0),
+    turns_since_question: Number(turns_since_question ?? 99),
   });
 }
 
@@ -362,6 +376,8 @@ async function processTurn({ user_id, text, forcedLang }) {
       last_agent_prompt: "",
       last_question_type: "none",
       last_bot_mode: "none",
+      question_streak: 0,
+      turns_since_question: 99,
     };
 
     await upsertSession(session);
@@ -379,6 +395,8 @@ async function processTurn({ user_id, text, forcedLang }) {
       lang,
       last_agent_prompt: stoppedText(lang),
       last_bot_mode: "GENTLE_CLOSURE",
+      question_streak: 0,
+      turns_since_question: Number(session.turns_since_question ?? 99) + 1,
     });
     return stoppedText(lang);
   }
@@ -399,6 +417,8 @@ async function processTurn({ user_id, text, forcedLang }) {
       last_agent_prompt: open,
       last_question_type: "none",
       last_bot_mode: "ACKNOWLEDGMENT",
+      question_streak: 0,
+      turns_since_question: 99,
     });
 
     return open;
@@ -417,6 +437,8 @@ async function processTurn({ user_id, text, forcedLang }) {
       lang,
       last_agent_prompt: open,
       last_bot_mode: "ACKNOWLEDGMENT",
+      question_streak: 0,
+      turns_since_question: Number(session.turns_since_question ?? 99) + 1,
     });
 
     return open;
@@ -433,6 +455,8 @@ async function processTurn({ user_id, text, forcedLang }) {
       seed_prompt: topic,
       last_agent_prompt: reply,
       last_bot_mode: "ACKNOWLEDGMENT",
+      question_streak: 0,
+      turns_since_question: Number(session.turns_since_question ?? 99) + 1,
     });
 
     return reply;
@@ -447,6 +471,8 @@ async function processTurn({ user_id, text, forcedLang }) {
       lang,
       last_agent_prompt: open,
       last_bot_mode: "ACKNOWLEDGMENT",
+      question_streak: 0,
+      turns_since_question: Number(session.turns_since_question ?? 99) + 1,
     });
 
     return open;
@@ -462,11 +488,16 @@ async function processTurn({ user_id, text, forcedLang }) {
     msg_count: updatedCount,
     last_bot_reply: session.last_agent_prompt || "",
     last_bot_mode: session.last_bot_mode || "none",
+    question_streak: Number(session.question_streak || 0),
+    turns_since_question: Number(session.turns_since_question ?? 99),
   });
 
   const replyText = aiTurn?.text || "";
   const nextMode = aiTurn?.mode || "ACKNOWLEDGMENT";
   const withBotTurn = appendTurn(withUserTurn, "Bot", replyText);
+
+  const nextQuestionStreak = nextMode === "ASK" ? Number(session.question_streak || 0) + 1 : 0;
+  const nextTurnsSinceQuestion = nextMode === "ASK" ? 0 : Number(session.turns_since_question ?? 99) + 1;
 
   await upsertSession({
     ...session,
@@ -476,6 +507,8 @@ async function processTurn({ user_id, text, forcedLang }) {
     msg_count: updatedCount,
     last_agent_prompt: replyText,
     last_bot_mode: nextMode,
+    question_streak: nextQuestionStreak,
+    turns_since_question: nextTurnsSinceQuestion,
   });
 
   return replyText;

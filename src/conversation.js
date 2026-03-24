@@ -101,12 +101,8 @@ function openingText(lang) {
 }
 
 function stoppedText(lang) {
-  if (lang === "hi") {
-    return "ठीक है. जब भी फिर से बात करनी हो, START लिखें।";
-  }
-  if (lang === "gu") {
-    return "બરાબર. જ્યારે ફરી વાત કરવી હોય, START લખો.";
-  }
+  if (lang === "hi") return "ठीक है. जब भी फिर से बात करनी हो, START लिखें।";
+  if (lang === "gu") return "બરાબર. જ્યારે ફરી વાત કરવી હોય, START લખો.";
   return "Okay. Write START anytime if you would like to continue.";
 }
 
@@ -178,14 +174,8 @@ function isTopicRequest(text) {
 }
 
 function topicIntroText(lang, topic) {
-  if (lang === "hi") {
-    return `आज के लिए एक छोटा-सा संकेत:\n${topic}`;
-  }
-
-  if (lang === "gu") {
-    return `આજ માટે એક નાનો સંકેત:\n${topic}`;
-  }
-
+  if (lang === "hi") return `आज के लिए एक छोटा-सा संकेत:\n${topic}`;
+  if (lang === "gu") return `આજ માટે એક નાનો સંકેત:\n${topic}`;
   return `Here is a small prompt for today:\n${topic}`;
 }
 
@@ -195,7 +185,7 @@ function appendTurn(history, speaker, text) {
   return history ? `${history}\n${speaker}: ${clean}` : `${speaker}: ${clean}`;
 }
 
-function lastTurns(history, maxLines = 8) {
+function lastTurns(history, maxLines = 10) {
   const lines = String(history || "")
     .split("\n")
     .map((x) => x.trim())
@@ -344,7 +334,7 @@ async function buildListenerReply({
   last_bot_mode,
 }) {
   const promptPrefix = seed_prompt ? `Today's prompt: ${seed_prompt}\n\n` : "";
-  const recentConversation = lastTurns(fullConversation, 8);
+  const recentConversation = lastTurns(fullConversation, 10);
 
   return generateListenerTurn({
     lang,
@@ -388,7 +378,7 @@ async function processTurn({ user_id, text, forcedLang }) {
       state: "STOPPED",
       lang,
       last_agent_prompt: stoppedText(lang),
-      last_bot_mode: "CLOSE",
+      last_bot_mode: "GENTLE_CLOSURE",
     });
     return stoppedText(lang);
   }
@@ -408,7 +398,7 @@ async function processTurn({ user_id, text, forcedLang }) {
       seed_prompt: "",
       last_agent_prompt: open,
       last_question_type: "none",
-      last_bot_mode: "ACK",
+      last_bot_mode: "ACKNOWLEDGMENT",
     });
 
     return open;
@@ -426,7 +416,7 @@ async function processTurn({ user_id, text, forcedLang }) {
       state: "READY",
       lang,
       last_agent_prompt: open,
-      last_bot_mode: "ACK",
+      last_bot_mode: "ACKNOWLEDGMENT",
     });
 
     return open;
@@ -442,7 +432,7 @@ async function processTurn({ user_id, text, forcedLang }) {
       lang,
       seed_prompt: topic,
       last_agent_prompt: reply,
-      last_bot_mode: "ACK",
+      last_bot_mode: "ACKNOWLEDGMENT",
     });
 
     return reply;
@@ -456,7 +446,7 @@ async function processTurn({ user_id, text, forcedLang }) {
       state: "READY",
       lang,
       last_agent_prompt: open,
-      last_bot_mode: "ACK",
+      last_bot_mode: "ACKNOWLEDGMENT",
     });
 
     return open;
@@ -475,7 +465,7 @@ async function processTurn({ user_id, text, forcedLang }) {
   });
 
   const replyText = aiTurn?.text || "";
-  const nextMode = aiTurn?.mode || "ACK";
+  const nextMode = aiTurn?.mode || "ACKNOWLEDGMENT";
   const withBotTurn = appendTurn(withUserTurn, "Bot", replyText);
 
   await upsertSession({

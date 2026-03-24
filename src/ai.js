@@ -1,5 +1,5 @@
 // src/ai.js
-// KahaniBot AI: WhatsApp listener for reminiscence conversations
+// KahaniBot AI: conversational storytelling listener for WhatsApp
 
 const AI_ENABLED = String(process.env.AI_ENABLED || "").toLowerCase() === "true";
 const AI_MODEL = process.env.AI_MODEL || "gpt-4.1-mini";
@@ -16,91 +16,165 @@ function langLabel(lang) {
   return "English";
 }
 
-function cleanLine(text, fallback = "") {
+function cleanText(text, fallback = "") {
   let out = String(text || "").trim();
   if (!out) return fallback;
-  out = out.replace(/^["'\s]+|["'\s]+$/g, "");
   out = out.replace(/\s+/g, " ").trim();
-  if (out.length > 220) out = out.slice(0, 217).trim() + "...";
+  if (out.length > 320) out = out.slice(0, 317).trim() + "...";
   return out;
 }
 
-function ensureQuestion(text, fallback) {
-  let q = String(text || "").trim();
-  if (!q) return fallback;
-  q = q.replace(/\s+/g, " ").trim();
-  if (!/[?؟]$/.test(q)) {
-    q = q.replace(/[.!।]+$/g, "").trim() + "?";
+function normalizeForCompare(text) {
+  return String(text || "")
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s]/gu, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function latestUserMessage(conversationText) {
+  const lines = String(conversationText || "")
+    .split("\n")
+    .map((x) => x.trim())
+    .filter(Boolean);
+
+  for (let i = lines.length - 1; i >= 0; i--) {
+    if (lines[i].startsWith("User:")) {
+      return lines[i].replace(/^User:\s*/, "").trim();
+    }
   }
-  return q;
+
+  return "";
 }
 
-function stripQuestionFromLine(text) {
-  let line = String(text || "").trim();
-  if (!line) return "";
-  line = line.replace(/[?؟]+$/g, "").trim();
-  return line;
-}
+function groundedFallbackAck(lang, latestUser = "") {
+  const t = latestUser.toLowerCase();
 
-function stripEmoji(text) {
-  try {
-    return String(text || "").replace(/\p{Extended_Pictographic}/gu, "").replace(/\s+/g, " ").trim();
-  } catch {
-    return String(text || "").trim();
+  if (lang === "hi") {
+    if (t.includes("grandmother") || t.includes("mother") || t.includes("father")) {
+      return "यह किसी अपने से जुड़ी हुई याद लगती है।";
+    }
+    if (t.includes("tree") || t.includes("mango")) {
+      return "यह बचपन की बहुत जीवंत याद लगती है।";
+    }
+    if (t.includes("courtyard") || t.includes("afternoon") || t.includes("sun")) {
+      return "यह दृश्य बहुत शांत और साफ़-सा उभरता है।";
+    }
+    return "यह याद काफ़ी सजीव लग रही है।";
   }
-}
 
-function parseTaggedBlock(raw) {
-  const text = String(raw || "").trim();
+  if (lang === "gu") {
+    if (t.includes("grandmother") || t.includes("mother") || t.includes("father")) {
+      return "આ કોઈ નજીકના વ્યક્તિ સાથે જોડાયેલી યાદ લાગે છે.";
+    }
+    if (t.includes("tree") || t.includes("mango")) {
+      return "આ બાળપણની ખૂબ જીવંત યાદ લાગે છે.";
+    }
+    if (t.includes("courtyard") || t.includes("afternoon") || t.includes("sun")) {
+      return "આ દૃશ્ય ખૂબ શાંત અને સ્પષ્ટ લાગે છે.";
+    }
+    return "આ યાદ ખૂબ જીવંત લાગે છે.";
+  }
 
-  const modeMatch = text.match(/MODE:\s*(ACK|ASK|ENCOURAGE|CLOSE)/i);
-  const line1Match = text.match(/LINE1:\s*([\s\S]*?)(?:\nQUESTION:|\n$)/i);
-  const questionMatch = text.match(/QUESTION:\s*([\s\S]*?)$/i);
+  if (t.includes("grandmother") || t.includes("mother") || t.includes("father")) {
+    return "That sounds like a memory closely tied to someone important.";
+  }
+  if (t.includes("tree") || t.includes("mango")) {
+    return "That sounds like such a vivid childhood memory.";
+  }
+  if (t.includes("courtyard") || t.includes("afternoon") || t.includes("sun")) {
+    return "That scene feels very quiet and clear.";
+  }
+  if (t.includes("cousin") || t.includes("family")) {
+    return "It sounds like other people were very much part of that moment too.";
+  }
 
-  return {
-    mode: modeMatch ? modeMatch[1].toUpperCase() : "",
-    line1: line1Match ? line1Match[1].trim() : "",
-    question: questionMatch ? questionMatch[1].trim() : "",
-  };
-}
-
-function fallbackAck(lang) {
-  if (lang === "hi") return "यह याद बहुत सजीव लग रही है।";
-  if (lang === "gu") return "આ યાદ ખૂબ જીવંત લાગે છે.";
   return "That sounds like a vivid memory.";
 }
 
-function fallbackEncourage(lang) {
-  if (lang === "hi") return "अगर मन हो, थोड़ा और बताइए।";
-  if (lang === "gu") return "જો મન હોય, થોડું વધુ કહો.";
-  return "If you feel like it, you can say a little more.";
-}
+function groundedFallbackQuestion(lang, latestUser = "") {
+  const t = latestUser.toLowerCase();
 
-function fallbackQuestion(lang) {
-  if (lang === "hi") return "उस बात में आपको सबसे ज़्यादा क्या याद है?";
-  if (lang === "gu") return "તે વાતમાં તમને સૌથી વધુ શું યાદ છે?";
+  if (lang === "hi") {
+    if (t.includes("grandmother") || t.includes("mother") || t.includes("father")) {
+      return "वे वहाँ बैठकर आम तौर पर क्या करती थीं?";
+    }
+    if (t.includes("tree") || t.includes("mango")) {
+      return "पेड़ पर ऊपर पहुँचकर आपको कैसा लगता था?";
+    }
+    if (t.includes("courtyard")) {
+      return "उस आँगन की आपको सबसे ज़्यादा क्या याद है?";
+    }
+    return "उस बात में आपको सबसे ज़्यादा क्या याद है?";
+  }
+
+  if (lang === "gu") {
+    if (t.includes("grandmother") || t.includes("mother") || t.includes("father")) {
+      return "તેઓ ત્યાં બેઠા બેઠા સામાન્ય રીતે શું કરતા હતા?";
+    }
+    if (t.includes("tree") || t.includes("mango")) {
+      return "ઝાડની ટોચ સુધી પહોંચીને તમને કેવું લાગતું હતું?";
+    }
+    if (t.includes("courtyard")) {
+      return "એ આંગણાની તમને સૌથી વધુ શું યાદ છે?";
+    }
+    return "તે વાતમાં તમને સૌથી વધુ શું યાદ છે?";
+  }
+
+  if (t.includes("grandmother") || t.includes("mother") || t.includes("father")) {
+    return "What did she usually do while sitting there?";
+  }
+  if (t.includes("tree") || t.includes("mango")) {
+    return "What did it feel like being up there among the branches?";
+  }
+  if (t.includes("courtyard")) {
+    return "What do you remember most about that courtyard?";
+  }
+
   return "What do you remember most about that?";
 }
 
-function isGenericQuestion(q = "") {
-  const t = String(q || "").trim().toLowerCase();
-  return [
-    "what happened next?",
-    "and what happened next?",
-    "tell me more?",
-    "can you tell me more?",
-    "would you like to tell me more?",
-    "what do you remember?",
-    "can you say more?",
-    "और क्या हुआ?",
-    "और फिर क्या हुआ?",
-    "क्या आप और बताना चाहेंगे?",
-    "પછી શું થયું?",
-    "શું તમે વધુ કહેશો?",
-  ].includes(t);
+function stripEmojiFromQuestion(text) {
+  return String(text || "")
+    .replace(/\p{Extended_Pictographic}/gu, "")
+    .replace(/\s+\?/g, "?")
+    .trim();
 }
 
-async function callOpenAI({ system, user, temperature = 0.45 }) {
+function keepAtMostOneQuestion(reply) {
+  const text = String(reply || "").trim();
+  if (!text) return "";
+
+  const qIndex = text.indexOf("?");
+  if (qIndex === -1) {
+    return text;
+  }
+
+  const before = text.slice(0, qIndex + 1);
+  const after = text.slice(qIndex + 1);
+
+  const extraQ = after.indexOf("?");
+  if (extraQ === -1) {
+    return text;
+  }
+
+  return before.trim();
+}
+
+function removeQuestionSentence(reply) {
+  const text = String(reply || "").trim();
+  if (!text) return "";
+
+  const parts = text
+    .split(/\n+/)
+    .map((x) => x.trim())
+    .filter(Boolean)
+    .filter((line) => !/[?؟]$/.test(line));
+
+  return parts.join("\n").trim();
+}
+
+async function callOpenAI({ system, user, temperature = 0.55 }) {
   if (!AI_ENABLED) return null;
   if (!OPENAI_API_KEY) return null;
 
@@ -133,239 +207,144 @@ async function callOpenAI({ system, user, temperature = 0.45 }) {
   }
 }
 
-export async function analyzeListenerTurn({
-  lang,
-  conversation_text,
-  msg_count = 0,
-  last_bot_mode = "none",
-}) {
-  try {
-    const system =
-`You are KahaniBot.
-
-You are a warm WhatsApp listener for older adults sharing memories.
-
-Write in ${langLabel(lang)}.
-
-Your role is to create the feeling of being heard.
-You are not an interviewer, therapist, facilitator, teacher, or poet.
-
-Core behavior:
-- The user should always speak more than you.
-- Keep responses short.
-- Do not dominate the conversation.
-- Treat fragments, passing memories, and small details as valid.
-- Do not try to turn everything into a finished story.
-- Do not talk about saving, publishing, ending, blogs, or links.
-
-Response style:
-- Acknowledge concrete details from what the user said.
-- Avoid generic lines like "I'm listening", "That is meaningful", or "That is beautiful".
-- Sound natural in WhatsApp.
-- Occasionally use one small emoji like 🙂 or 🙏 or 😊, but rarely.
-- Never put an emoji inside a question.
-
-Question behavior:
-- Ask a question only sometimes.
-- Do not ask on every turn.
-- If the previous bot mode was ASK, strongly prefer ACK, ENCOURAGE, or CLOSE on this turn.
-- Only ask again if a question is truly needed.
-- If you ask, ask only ONE gentle question.
-- Good questions explore a person, place, small action, feeling, or sensory detail.
-- Avoid interrogation.
-
-Mode definitions:
-ACK = one short acknowledgment only
-ASK = one short acknowledgment plus one gentle question
-ENCOURAGE = one short low-pressure invitation to continue, no question
-CLOSE = one short resting response, no question
-
-Hard output rules:
-- LINE1 must never be a question.
-- Only QUESTION may contain a question.
-- If MODE is not ASK, QUESTION must be blank.
-
-Output exactly:
-
-MODE: ACK or ASK or ENCOURAGE or CLOSE
-LINE1: one short response line
-QUESTION: one gentle question only if MODE is ASK`;
-
-    const user =
-`Conversation so far:
-
-${conversation_text}
-
-Message count: ${Number(msg_count || 0)}
-Previous bot mode: ${last_bot_mode || "none"}`;
-
-    const out = await callOpenAI({
-      system,
-      user,
-      temperature: 0.5,
-    });
-
-    if (!out) return null;
-
-    const parsed = parseTaggedBlock(out);
-    if (!parsed.mode) return null;
-
-    return {
-      mode: parsed.mode,
-      line1: cleanLine(parsed.line1),
-      question: cleanLine(parsed.question),
-    };
-  } catch {
-    return null;
-  }
-}
-
 export async function generateListenerTurn({
   lang,
   conversation_text,
   msg_count = 0,
+  last_bot_reply = "",
   last_bot_mode = "none",
 }) {
-  const analysis = await analyzeListenerTurn({
-    lang,
-    conversation_text,
-    msg_count,
-    last_bot_mode,
+  const latestUser = latestUserMessage(conversation_text);
+
+  const system =
+`You are KahaniBot, a conversational storytelling listener designed to encourage older adults to share life memories inspired by reflection cards.
+
+A moderator already sends the prompt card. You do not introduce prompts. You respond only to what the user shares.
+
+Your behavior:
+- be a patient, respectful younger listener
+- keep replies short: usually 1–2 sentences
+- acknowledge before asking
+- ask only one question at a time
+- ask only occasionally, not every turn
+- if the previous bot message asked a question, prefer acknowledgment this turn
+- avoid sounding like an interviewer, therapist, teacher, or authority figure
+- do not summarize stories
+- do not organize narratives
+- do not talk about saving, endings, publishing, or links
+- treat fragments and incomplete memories as meaningful
+- occasionally use a small listening signal like "Haan…", "Accha…", "I see", or "Hmm…"
+- occasionally use a small emoji like 🙂 or 🙏 or 😊, but rarely
+- never put an emoji inside a question
+- avoid repeating the same phrase used in the previous bot reply
+
+Tone:
+- calm
+- curious
+- non-judgmental
+- patient
+- conversational, not polished
+
+Important:
+- the user should always speak more than you
+- avoid generic praise
+- ground your response in concrete details from the latest user message
+- a question is optional, not required`;
+
+  const user =
+`Recent conversation:
+${conversation_text}
+
+Latest user message:
+${latestUser}
+
+Previous bot reply:
+${last_bot_reply || "(none)"}
+
+Previous bot mode:
+${last_bot_mode || "none"}
+
+Message count:
+${Number(msg_count || 0)}
+
+Write one natural WhatsApp reply only.`;
+
+  let reply = await callOpenAI({
+    system,
+    user,
+    temperature: 0.55,
   });
 
-  // Safe fallback if AI is unavailable
-  if (!analysis) {
+  if (!reply) {
     if (last_bot_mode === "ASK") {
       return {
         mode: "ACK",
-        text: fallbackAck(lang),
+        text: groundedFallbackAck(lang, latestUser),
       };
     }
 
     return {
       mode: "ASK",
-      text: `${fallbackAck(lang)}\n${fallbackQuestion(lang)}`,
+      text: `${groundedFallbackAck(lang, latestUser)}\n${groundedFallbackQuestion(lang, latestUser)}`,
     };
   }
 
-  const line1 = stripQuestionFromLine(
-    analysis.line1 || fallbackAck(lang)
-  );
+  reply = cleanText(reply);
 
-  // Hard guard: never allow two ASK turns in a row
-  if (last_bot_mode === "ASK") {
-    if (analysis.mode === "ASK") {
-      return {
-        mode: "ACK",
-        text: line1 || fallbackAck(lang),
-      };
-    }
-
-    if (analysis.mode === "ENCOURAGE") {
-      return {
-        mode: "ENCOURAGE",
-        text: line1 || fallbackEncourage(lang),
-      };
-    }
-
-    if (analysis.mode === "CLOSE") {
-      return {
-        mode: "CLOSE",
-        text: line1 || fallbackAck(lang),
-      };
-    }
-
-    return {
-      mode: "ACK",
-      text: line1 || fallbackAck(lang),
-    };
+  // prevent exact repetition
+  if (
+    normalizeForCompare(reply) &&
+    normalizeForCompare(reply) === normalizeForCompare(last_bot_reply)
+  ) {
+    reply = groundedFallbackAck(lang, latestUser);
   }
 
-  if (analysis.mode === "ACK") {
-    return {
-      mode: "ACK",
-      text: line1 || fallbackAck(lang),
-    };
+  // never allow two question turns in a row
+  if (last_bot_mode === "ASK" && /[?؟]/.test(reply)) {
+    const noQuestion = removeQuestionSentence(reply);
+    reply = cleanText(noQuestion || groundedFallbackAck(lang, latestUser));
   }
 
-  if (analysis.mode === "ENCOURAGE") {
-    return {
-      mode: "ENCOURAGE",
-      text: line1 || fallbackEncourage(lang),
-    };
+  // keep at most one question
+  reply = keepAtMostOneQuestion(reply);
+
+  // no emoji inside question text
+  if (/[?؟]/.test(reply)) {
+    const lines = reply.split("\n").map((x) => x.trim()).filter(Boolean);
+    const fixed = lines.map((line) => {
+      if (/[?؟]$/.test(line)) {
+        return stripEmojiFromQuestion(line);
+      }
+      return line;
+    });
+    reply = fixed.join("\n");
   }
 
-  if (analysis.mode === "CLOSE") {
-    return {
-      mode: "CLOSE",
-      text: line1 || fallbackAck(lang),
-    };
+  // if still empty after cleanup
+  if (!reply) {
+    reply = groundedFallbackAck(lang, latestUser);
   }
 
-  let question = ensureQuestion(
-    stripEmoji(analysis.question),
-    fallbackQuestion(lang)
-  );
-
-  if (isGenericQuestion(question)) {
-    question = fallbackQuestion(lang);
-  }
+  const mode = /[?؟]/.test(reply) ? "ASK" : "ACK";
 
   return {
-    mode: "ASK",
-    text: [line1 || fallbackAck(lang), question].filter(Boolean).join("\n"),
+    mode,
+    text: reply,
   };
 }
 
-/*
-  Kept for compatibility if you later want background cleaning/logging.
-*/
+// kept for compatibility
 export async function polishStory({ lang, story_text }) {
   const raw = String(story_text || "").trim();
   if (!raw) return null;
 
-  const system =
-`You lightly clean spoken reminiscence text.
-
-Write in ${langLabel(lang)}.
-
-Rules:
-- Keep the original meaning.
-- Do not add new details.
-- Remove obvious repetition only.
-- Keep language simple.
-
-Return JSON with keys "title" and "body".`;
-
-  const user = `Transcript:\n${raw}`;
-
-  const out = await callOpenAI({
-    system,
-    user,
-    temperature: 0.2,
-  });
-
-  if (!out) return null;
-
-  try {
-    const start = out.indexOf("{");
-    const end = out.lastIndexOf("}");
-    const jsonStr =
-      start >= 0 && end >= 0 ? out.slice(start, end + 1) : out;
-
-    const obj = JSON.parse(jsonStr);
-
-    return {
-      title:
-        String(obj.title || "").trim() ||
-        (lang === "hi"
-          ? "एक स्मृति"
-          : lang === "gu"
-          ? "એક યાદ"
-          : "A Memory"),
-      body: String(obj.body || raw).trim(),
-    };
-  } catch {
-    return null;
-  }
+  return {
+    title:
+      lang === "hi"
+        ? "एक स्मृति"
+        : lang === "gu"
+        ? "એક યાદ"
+        : "A Memory",
+    body: raw,
+  };
 }

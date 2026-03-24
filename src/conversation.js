@@ -117,7 +117,6 @@ function shouldTreatAsMemory(text) {
   return true;
 }
 
-// Optional fallback for topic requests
 let MANAN_CACHE = null;
 
 function loadMananCards() {
@@ -188,6 +187,21 @@ function topicIntroText(lang, topic) {
   }
 
   return `Here is a small prompt for today:\n${topic}`;
+}
+
+function appendTurn(history, speaker, text) {
+  const clean = String(text || "").trim();
+  if (!clean) return history || "";
+  return history ? `${history}\n${speaker}: ${clean}` : `${speaker}: ${clean}`;
+}
+
+function lastTurns(history, maxLines = 8) {
+  const lines = String(history || "")
+    .split("\n")
+    .map((x) => x.trim())
+    .filter(Boolean);
+
+  return lines.slice(-maxLines).join("\n");
 }
 
 async function loadSession(user_id) {
@@ -321,44 +335,24 @@ async function resetSession(user_id, lang = "en") {
   });
 }
 
-function buildAiInput({ seed_prompt, fullConversation }) {
-  const themeBlock = seed_prompt ? `Today's prompt: ${seed_prompt}` : "Today's prompt:";
-  const convoBlock = fullConversation
-    ? `Conversation so far:\n${fullConversation}`
-    : "Conversation so far:";
-  return `${themeBlock}\n\n${convoBlock}`;
-}
-
 async function buildListenerReply({
   lang,
   seed_prompt,
   fullConversation,
   msg_count,
+  last_bot_reply,
   last_bot_mode,
 }) {
-  const aiInput = buildAiInput({
-    seed_prompt,
-    fullConversation,
-  });
+  const promptPrefix = seed_prompt ? `Today's prompt: ${seed_prompt}\n\n` : "";
+  const recentConversation = lastTurns(fullConversation, 8);
 
-  const aiResult = await generateListenerTurn({
+  return generateListenerTurn({
     lang,
-    conversation_text: aiInput,
+    conversation_text: `${promptPrefix}${recentConversation}`,
     msg_count: Number(msg_count || 0),
+    last_bot_reply: last_bot_reply || "",
     last_bot_mode: last_bot_mode || "none",
   });
-
-  if (aiResult) return aiResult;
-
-  return {
-    mode: "ACK",
-    text:
-      lang === "hi"
-        ? "यह याद बहुत सजीव लग रही है।"
-        : lang === "gu"
-        ? "આ યાદ ખૂબ જીવંત લાગે છે."
-        : "That sounds like a vivid memory.",
-  };
 }
 
 async function processTurn({ user_id, text, forcedLang }) {
@@ -394,7 +388,6 @@ async function processTurn({ user_id, text, forcedLang }) {
       state: "STOPPED",
       lang,
       last_agent_prompt: stoppedText(lang),
-      last_question_type: "none",
       last_bot_mode: "CLOSE",
     });
     return stoppedText(lang);
@@ -433,7 +426,6 @@ async function processTurn({ user_id, text, forcedLang }) {
       state: "READY",
       lang,
       last_agent_prompt: open,
-      last_question_type: "none",
       last_bot_mode: "ACK",
     });
 
@@ -450,7 +442,6 @@ async function processTurn({ user_id, text, forcedLang }) {
       lang,
       seed_prompt: topic,
       last_agent_prompt: reply,
-      last_question_type: "none",
       last_bot_mode: "ACK",
     });
 
@@ -465,37 +456,35 @@ async function processTurn({ user_id, text, forcedLang }) {
       state: "READY",
       lang,
       last_agent_prompt: open,
-      last_question_type: "none",
       last_bot_mode: "ACK",
     });
 
     return open;
   }
 
-  const updatedConversation = session.story_text
-    ? `${session.story_text}\n${msg}`
-    : msg;
+  const withUserTurn = appendTurn(session.story_text, "User", msg);
   const updatedCount = Number(session.msg_count || 0) + 1;
 
   const aiTurn = await buildListenerReply({
     lang,
     seed_prompt: session.seed_prompt || "",
-    fullConversation: updatedConversation,
+    fullConversation: withUserTurn,
     msg_count: updatedCount,
+    last_bot_reply: session.last_agent_prompt || "",
     last_bot_mode: session.last_bot_mode || "none",
   });
 
   const replyText = aiTurn?.text || "";
   const nextMode = aiTurn?.mode || "ACK";
+  const withBotTurn = appendTurn(withUserTurn, "Bot", replyText);
 
   await upsertSession({
     ...session,
     state: "LISTENING",
     lang,
-    story_text: updatedConversation,
+    story_text: withBotTurn,
     msg_count: updatedCount,
     last_agent_prompt: replyText,
-    last_question_type: "none",
     last_bot_mode: nextMode,
   });
 

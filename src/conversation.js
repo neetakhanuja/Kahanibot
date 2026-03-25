@@ -27,6 +27,88 @@ function normalizeText(s) {
   return String(s || "").trim();
 }
 
+function wordCount(text) {
+  return String(text || "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean).length;
+}
+
+function isEmojiOnly(text) {
+  const t = String(text || "").trim();
+  if (!t) return false;
+  const stripped = t.replace(/[\p{Extended_Pictographic}\s]/gu, "");
+  return stripped.length === 0;
+}
+
+function isClosureSignal(text) {
+  const t = String(text || "").trim().toLowerCase();
+
+  if (!t) return false;
+  if (isEmojiOnly(t)) return true;
+
+  const exact = [
+    "ok",
+    "okay",
+    "haan",
+    "ha",
+    "hmm",
+    "hm",
+    "yes",
+    "true",
+    "right",
+    "thanks",
+    "thank you",
+    "good",
+    "nice",
+    "done",
+    "bas",
+    "theek",
+    "thik",
+    "achha",
+    "accha",
+    "bye",
+    "👍",
+    "🙏",
+    "🙂",
+    "😊",
+    "हाँ",
+    "हां",
+    "ठीक",
+    "अच्छा",
+    "धन्यवाद",
+    "બરાબર",
+    "સારું",
+    "હા",
+    "આભાર",
+    "સાચી વાત",
+  ];
+
+  if (exact.includes(t)) return true;
+  if (wordCount(t) <= 2) return true;
+
+  return false;
+}
+
+function isLikelyFullStory(text) {
+  const t = String(text || "").trim();
+  const wc = wordCount(t);
+
+  if (!t) return false;
+  if (wc >= 30) return true;
+  if (wc >= 22 && /[,.!?।]/.test(t)) return true;
+  if (
+    wc >= 20 &&
+    /\b(when|while|after|before|then|used to|remember|once|during|school|childhood|festival|grandmother|grandfather|mother|father)\b/i.test(
+      t
+    )
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
 function detectLangFromText(text, fallback = "en") {
   const t = String(text || "").trim();
 
@@ -104,6 +186,12 @@ function stoppedText(lang) {
   if (lang === "hi") return "ठीक है. जब भी फिर से बात करनी हो, START लिखें।";
   if (lang === "gu") return "બરાબર. જ્યારે ફરી વાત કરવી હોય, START લખો.";
   return "Okay. Write START anytime if you would like to continue.";
+}
+
+function softClosingText(lang) {
+  if (lang === "hi") return "🙂";
+  if (lang === "gu") return "🙂";
+  return "🙂";
 }
 
 function shouldTreatAsMemory(text) {
@@ -217,6 +305,8 @@ async function loadSession(user_id) {
   const idxLastBotMode = headerIndex(headers, "last_bot_mode");
   const idxQuestionStreak = headerIndex(headers, "question_streak");
   const idxTurnsSinceQuestion = headerIndex(headers, "turns_since_question");
+  const idxBotTurnsAfterStory = headerIndex(headers, "bot_turns_after_story");
+  const idxStoryWindowOpen = headerIndex(headers, "story_window_open");
 
   for (let r = 1; r < rows.length; r++) {
     const row = rows[r] || [];
@@ -236,7 +326,14 @@ async function loadSession(user_id) {
         last_question_type: idxLastQType === -1 ? "none" : row[idxLastQType] || "none",
         last_bot_mode: idxLastBotMode === -1 ? "none" : row[idxLastBotMode] || "none",
         question_streak: idxQuestionStreak === -1 ? 0 : Number(row[idxQuestionStreak] || 0),
-        turns_since_question: idxTurnsSinceQuestion === -1 ? 99 : Number(row[idxTurnsSinceQuestion] || 99),
+        turns_since_question:
+          idxTurnsSinceQuestion === -1 ? 99 : Number(row[idxTurnsSinceQuestion] || 99),
+        bot_turns_after_story:
+          idxBotTurnsAfterStory === -1 ? 0 : Number(row[idxBotTurnsAfterStory] || 0),
+        story_window_open:
+          idxStoryWindowOpen === -1
+            ? false
+            : String(row[idxStoryWindowOpen] || "").toLowerCase() === "true",
       };
     }
   }
@@ -273,6 +370,8 @@ async function upsertSession(session) {
   const idxLastBotMode = headerIndex(headers, "last_bot_mode");
   const idxQuestionStreak = headerIndex(headers, "question_streak");
   const idxTurnsSinceQuestion = headerIndex(headers, "turns_since_question");
+  const idxBotTurnsAfterStory = headerIndex(headers, "bot_turns_after_story");
+  const idxStoryWindowOpen = headerIndex(headers, "story_window_open");
   const idxUpdated = headerIndex(headers, "updated_at");
   const idxCreated = headerIndex(headers, "created_at");
 
@@ -302,7 +401,12 @@ async function upsertSession(session) {
   if (idxLastQType !== -1) outRow[idxLastQType] = session.last_question_type || "none";
   if (idxLastBotMode !== -1) outRow[idxLastBotMode] = session.last_bot_mode || "none";
   if (idxQuestionStreak !== -1) outRow[idxQuestionStreak] = String(session.question_streak || 0);
-  if (idxTurnsSinceQuestion !== -1) outRow[idxTurnsSinceQuestion] = String(session.turns_since_question ?? 99);
+  if (idxTurnsSinceQuestion !== -1)
+    outRow[idxTurnsSinceQuestion] = String(session.turns_since_question ?? 99);
+  if (idxBotTurnsAfterStory !== -1)
+    outRow[idxBotTurnsAfterStory] = String(session.bot_turns_after_story || 0);
+  if (idxStoryWindowOpen !== -1)
+    outRow[idxStoryWindowOpen] = String(Boolean(session.story_window_open));
 
   if (idxUpdated !== -1) outRow[idxUpdated] = isoNow();
   if (idxCreated !== -1 && isNew) outRow[idxCreated] = isoNow();
@@ -332,6 +436,8 @@ async function resetSession(user_id, lang = "en") {
     last_bot_mode: "none",
     question_streak: 0,
     turns_since_question: 99,
+    bot_turns_after_story: 0,
+    story_window_open: false,
   });
 }
 
@@ -378,6 +484,8 @@ async function processTurn({ user_id, text, forcedLang }) {
       last_bot_mode: "none",
       question_streak: 0,
       turns_since_question: 99,
+      bot_turns_after_story: 0,
+      story_window_open: false,
     };
 
     await upsertSession(session);
@@ -397,6 +505,8 @@ async function processTurn({ user_id, text, forcedLang }) {
       last_bot_mode: "GENTLE_CLOSURE",
       question_streak: 0,
       turns_since_question: Number(session.turns_since_question ?? 99) + 1,
+      story_window_open: false,
+      bot_turns_after_story: 0,
     });
     return stoppedText(lang);
   }
@@ -419,6 +529,8 @@ async function processTurn({ user_id, text, forcedLang }) {
       last_bot_mode: "ACKNOWLEDGMENT",
       question_streak: 0,
       turns_since_question: 99,
+      bot_turns_after_story: 0,
+      story_window_open: false,
     });
 
     return open;
@@ -439,6 +551,8 @@ async function processTurn({ user_id, text, forcedLang }) {
       last_bot_mode: "ACKNOWLEDGMENT",
       question_streak: 0,
       turns_since_question: Number(session.turns_since_question ?? 99) + 1,
+      story_window_open: false,
+      bot_turns_after_story: 0,
     });
 
     return open;
@@ -457,6 +571,8 @@ async function processTurn({ user_id, text, forcedLang }) {
       last_bot_mode: "ACKNOWLEDGMENT",
       question_streak: 0,
       turns_since_question: Number(session.turns_since_question ?? 99) + 1,
+      story_window_open: false,
+      bot_turns_after_story: 0,
     });
 
     return reply;
@@ -473,9 +589,53 @@ async function processTurn({ user_id, text, forcedLang }) {
       last_bot_mode: "ACKNOWLEDGMENT",
       question_streak: 0,
       turns_since_question: Number(session.turns_since_question ?? 99) + 1,
+      story_window_open: false,
+      bot_turns_after_story: 0,
     });
 
     return open;
+  }
+
+  let storyWindowOpen = Boolean(session.story_window_open);
+  let botTurnsAfterStory = Number(session.bot_turns_after_story || 0);
+
+  if (isLikelyFullStory(msg)) {
+    storyWindowOpen = true;
+    botTurnsAfterStory = 0;
+  }
+
+  if (storyWindowOpen && session.last_bot_mode === "GENTLE_CLOSURE" && isClosureSignal(msg)) {
+    await upsertSession({
+      ...session,
+      state: "READY",
+      lang,
+      story_window_open: false,
+      bot_turns_after_story: 0,
+      turns_since_question: Number(session.turns_since_question ?? 99) + 1,
+    });
+    return "";
+  }
+
+  if (storyWindowOpen && botTurnsAfterStory >= 2) {
+    const reply = softClosingText(lang);
+    const withUserTurn = appendTurn(session.story_text, "User", msg);
+    const withBotTurn = appendTurn(withUserTurn, "Bot", reply);
+
+    await upsertSession({
+      ...session,
+      state: "READY",
+      lang,
+      story_text: withBotTurn,
+      msg_count: Number(session.msg_count || 0) + 1,
+      last_agent_prompt: reply,
+      last_bot_mode: "GENTLE_CLOSURE",
+      question_streak: 0,
+      turns_since_question: Number(session.turns_since_question ?? 99) + 1,
+      story_window_open: false,
+      bot_turns_after_story: 0,
+    });
+
+    return reply;
   }
 
   const withUserTurn = appendTurn(session.story_text, "User", msg);
@@ -496,8 +656,13 @@ async function processTurn({ user_id, text, forcedLang }) {
   const nextMode = aiTurn?.mode || "ACKNOWLEDGMENT";
   const withBotTurn = appendTurn(withUserTurn, "Bot", replyText);
 
-  const nextQuestionStreak = nextMode === "ASK" ? Number(session.question_streak || 0) + 1 : 0;
-  const nextTurnsSinceQuestion = nextMode === "ASK" ? 0 : Number(session.turns_since_question ?? 99) + 1;
+  const nextQuestionStreak =
+    nextMode === "ASK" ? Number(session.question_streak || 0) + 1 : 0;
+  const nextTurnsSinceQuestion =
+    nextMode === "ASK" ? 0 : Number(session.turns_since_question ?? 99) + 1;
+
+  const nextBotTurnsAfterStory = storyWindowOpen ? botTurnsAfterStory + 1 : 0;
+  const nextStoryWindowOpen = nextMode === "GENTLE_CLOSURE" ? false : storyWindowOpen;
 
   await upsertSession({
     ...session,
@@ -509,6 +674,8 @@ async function processTurn({ user_id, text, forcedLang }) {
     last_bot_mode: nextMode,
     question_streak: nextQuestionStreak,
     turns_since_question: nextTurnsSinceQuestion,
+    bot_turns_after_story: nextBotTurnsAfterStory,
+    story_window_open: nextStoryWindowOpen,
   });
 
   return replyText;

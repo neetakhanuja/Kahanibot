@@ -5,9 +5,12 @@ import path from "path";
 
 import { getSheetsClient, readRange } from "./sheets.js";
 import { generateListenerTurn } from "./ai.js";
+import { saveStory } from "./storyStore.js";
 
 const SHEET_ID = process.env.GOOGLE_SHEET_ID;
 const SESSIONS_TAB = "sessions";
+const STORY_BASE_URL =
+  process.env.STORY_BASE_URL || "https://kahanibot-l0l7.onrender.com/story";
 
 console.log("[BOOT] conversation.js loaded");
 
@@ -188,10 +191,18 @@ function stoppedText(lang) {
   return "Okay. Write START anytime if you would like to continue.";
 }
 
-function softClosingText(lang) {
-  if (lang === "hi") return "🙂";
-  if (lang === "gu") return "🙂";
+function softClosingEmoji() {
   return "🙂";
+}
+
+function storyLinkText(lang, url) {
+  if (lang === "hi") {
+    return `🙂\n\nयह आपकी कहानी का लिंक है:\n${url}`;
+  }
+  if (lang === "gu") {
+    return `🙂\n\nઆ તમારી વાર્તાનો લિંક છે:\n${url}`;
+  }
+  return `🙂\n\nHere is your story link:\n${url}`;
 }
 
 function shouldTreatAsMemory(text) {
@@ -280,6 +291,42 @@ function lastTurns(history, maxLines = 10) {
     .filter(Boolean);
 
   return lines.slice(-maxLines).join("\n");
+}
+
+function extractUserOnlyStory(history) {
+  const lines = String(history || "")
+    .split("\n")
+    .map((x) => x.trim())
+    .filter(Boolean);
+
+  const userLines = lines
+    .filter((line) => line.startsWith("User:"))
+    .map((line) => line.replace(/^User:\s*/, "").trim())
+    .filter(Boolean);
+
+  return userLines.join("\n\n").trim();
+}
+
+async function maybeSaveStoryAndBuildLink({ user_id, lang, story_text }) {
+  const cleanStory = String(story_text || "").trim();
+  if (!cleanStory) return "";
+
+  try {
+    const saved = await saveStory({
+      user_id,
+      story_text: cleanStory,
+      transcript_text: cleanStory,
+      polished_story_text: cleanStory,
+      publish: false,
+      privacy: "private",
+      title: "",
+    });
+
+    return `${STORY_BASE_URL}/${saved.id}`;
+  } catch (err) {
+    console.error("[STORY SAVE ERROR]", err);
+    return "";
+  }
 }
 
 async function loadSession(user_id) {
@@ -605,25 +652,37 @@ async function processTurn({ user_id, text, forcedLang }) {
   }
 
   if (storyWindowOpen && session.last_bot_mode === "GENTLE_CLOSURE" && isClosureSignal(msg)) {
+    const userOnlyStory = extractUserOnlyStory(session.story_text);
+    const storyUrl = await maybeSaveStoryAndBuildLink({
+      user_id,
+      lang,
+      story_text: userOnlyStory,
+    });
+
+    const finalReply = storyUrl ? storyLinkText(lang, storyUrl) : "";
+
     await upsertSession({
       ...session,
       state: "READY",
       lang,
+      last_agent_prompt: finalReply,
+      last_bot_mode: "READY",
       story_window_open: false,
       bot_turns_after_story: 0,
       turns_since_question: Number(session.turns_since_question ?? 99) + 1,
     });
-    return "";
+
+    return finalReply;
   }
 
   if (storyWindowOpen && botTurnsAfterStory >= 2) {
-    const reply = softClosingText(lang);
+    const reply = softClosingEmoji();
     const withUserTurn = appendTurn(session.story_text, "User", msg);
     const withBotTurn = appendTurn(withUserTurn, "Bot", reply);
 
     await upsertSession({
       ...session,
-      state: "READY",
+      state: "LISTENING",
       lang,
       story_text: withBotTurn,
       msg_count: Number(session.msg_count || 0) + 1,
@@ -631,8 +690,8 @@ async function processTurn({ user_id, text, forcedLang }) {
       last_bot_mode: "GENTLE_CLOSURE",
       question_streak: 0,
       turns_since_question: Number(session.turns_since_question ?? 99) + 1,
-      story_window_open: false,
-      bot_turns_after_story: 0,
+      story_window_open: true,
+      bot_turns_after_story: botTurnsAfterStory + 1,
     });
 
     return reply;
@@ -662,7 +721,8 @@ async function processTurn({ user_id, text, forcedLang }) {
     nextMode === "ASK" ? 0 : Number(session.turns_since_question ?? 99) + 1;
 
   const nextBotTurnsAfterStory = storyWindowOpen ? botTurnsAfterStory + 1 : 0;
-  const nextStoryWindowOpen = nextMode === "GENTLE_CLOSURE" ? false : storyWindowOpen;
+  const nextStoryWindowOpen =
+    nextMode === "GENTLE_CLOSURE" ? true : storyWindowOpen;
 
   await upsertSession({
     ...session,

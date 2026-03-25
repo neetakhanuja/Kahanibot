@@ -87,6 +87,10 @@ function isClosureSignal(text) {
     "હા",
     "આભાર",
     "સાચી વાત",
+    "સાચી વાત છે",
+    "હા, સાચી વાત છે",
+    "haha",
+    "lol",
   ];
 
   if (exact.includes(t)) return true;
@@ -193,18 +197,16 @@ function stoppedText(lang) {
   return "Okay. Write START anytime if you would like to continue.";
 }
 
-function storyLinkText(lang, url) {
-  if (!url) return "🙂";
+function gentleClosingText(lang) {
+  if (lang === "hi") return "यह याद सुनकर अच्छा लगा।";
+  if (lang === "gu") return "આ યાદ સાંભળીને સારું લાગ્યું.";
+  return "It was lovely hearing this memory.";
+}
 
-  if (lang === "hi") {
-    return `🙂\n\nयह आपकी कहानी का लिंक है:\n${url}`;
-  }
-
-  if (lang === "gu") {
-    return `🙂\n\nઆ તમારી વાર્તાનો લિંક છે:\n${url}`;
-  }
-
-  return `🙂\n\nHere is your story link:\n${url}`;
+function storyLinkIntroText(lang) {
+  if (lang === "hi") return "यह आपकी कहानी का लिंक है:";
+  if (lang === "gu") return "આ તમારી વાર્તાનો લિંક છે:";
+  return "Here is your story link:";
 }
 
 function shouldTreatAsMemory(text) {
@@ -295,6 +297,14 @@ function lastTurns(history, maxLines = 10) {
   return lines.slice(-maxLines).join("\n");
 }
 
+function normalizeMinimal(text) {
+  return String(text || "")
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s]/gu, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function extractUserOnlyStory(history) {
   const lines = String(history || "")
     .split("\n")
@@ -313,7 +323,13 @@ function extractUserOnlyStory(history) {
     "yes",
     "hmm",
     "hm",
+    "haha",
+    "lol",
+    "right",
+    "true",
   ]);
+
+  const seen = new Set();
 
   const userLines = lines
     .filter((line) => line.startsWith("User:"))
@@ -321,21 +337,34 @@ function extractUserOnlyStory(history) {
     .filter((text) => {
       if (!text) return false;
 
-      const normalized = text.toLowerCase().replace(/[.!?]/g, "").trim();
+      const normalized = normalizeMinimal(text);
 
+      if (!normalized) return false;
       if (filler.has(normalized)) return false;
-
       if (normalized.length < 4) return false;
+      if (seen.has(normalized)) return false;
 
+      seen.add(normalized);
       return true;
     });
 
   return userLines.join("\n\n").trim();
 }
 
+function firstMeaningfulLine(storyText) {
+  const parts = String(storyText || "")
+    .split(/\n+/)
+    .map((x) => x.trim())
+    .filter(Boolean);
+
+  return parts[0] || "";
+}
+
 async function maybeSaveStoryAndBuildLink({ user_id, story_text }) {
   const cleanStory = String(story_text || "").trim();
   if (!cleanStory) return "";
+
+  const title = firstMeaningfulLine(cleanStory).slice(0, 80);
 
   try {
     const saved = await saveStory({
@@ -345,7 +374,7 @@ async function maybeSaveStoryAndBuildLink({ user_id, story_text }) {
       polished_story_text: cleanStory,
       publish: false,
       privacy: "private",
-      title: "",
+      title,
     });
 
     if (!saved?.id) return "";
@@ -584,7 +613,7 @@ async function processTurn({ user_id, text, forcedLang }) {
       story_window_open: false,
       bot_turns_after_story: 0,
     });
-    return stoppedText(lang);
+    return { text: stoppedText(lang) };
   }
 
   if (lower === "start" || lower === "reset") {
@@ -609,11 +638,11 @@ async function processTurn({ user_id, text, forcedLang }) {
       story_window_open: false,
     });
 
-    return open;
+    return { text: open };
   }
 
   if (session.state === "STOPPED") {
-    return "";
+    return { text: "" };
   }
 
   if (!msg || isGreetingOnly(msg)) {
@@ -631,7 +660,7 @@ async function processTurn({ user_id, text, forcedLang }) {
       bot_turns_after_story: 0,
     });
 
-    return open;
+    return { text: open };
   }
 
   if (isTopicRequest(msg)) {
@@ -651,7 +680,7 @@ async function processTurn({ user_id, text, forcedLang }) {
       bot_turns_after_story: 0,
     });
 
-    return reply;
+    return { text: reply };
   }
 
   if (!shouldTreatAsMemory(msg)) {
@@ -669,38 +698,52 @@ async function processTurn({ user_id, text, forcedLang }) {
       bot_turns_after_story: 0,
     });
 
-    return open;
+    return { text: open };
   }
 
   let storyWindowOpen = Boolean(session.story_window_open);
   let botTurnsAfterStory = Number(session.bot_turns_after_story || 0);
 
+  // Start a fresh story window when a new full story arrives.
   if (isLikelyFullStory(msg)) {
     storyWindowOpen = true;
     botTurnsAfterStory = 0;
+
+    session = {
+      ...session,
+      story_text: "",
+      msg_count: 0,
+      question_streak: 0,
+      turns_since_question: 99,
+    };
   }
 
-  // If we are already in a story window and the user now gives a short closure signal,
-  // save the story immediately and send the link.
-  if (storyWindowOpen && isClosureSignal(msg) && botTurnsAfterStory >= 1) {
-    const withUserTurn = appendTurn(session.story_text, "User", msg);
-    const userOnlyStory = extractUserOnlyStory(withUserTurn);
+  const withUserTurn = appendTurn(session.story_text, "User", msg);
+  const updatedCount = Number(session.msg_count || 0) + 1;
 
+  // If we are already in a story window and the user now gives a short closure signal,
+  // send a closing line, then emoji, then link as separate messages.
+  if (storyWindowOpen && isClosureSignal(msg) && botTurnsAfterStory >= 2) {
+    const userOnlyStory = extractUserOnlyStory(withUserTurn);
     const storyUrl = await maybeSaveStoryAndBuildLink({
       user_id,
       story_text: userOnlyStory,
     });
 
-    const finalReply = storyLinkText(lang, storyUrl);
-    const withBotTurn = appendTurn(withUserTurn, "Bot", finalReply);
+    const closingLine = gentleClosingText(lang);
+    const emoji = "🙂";
+    const linkLine = storyUrl ? `${storyLinkIntroText(lang)}\n${storyUrl}` : "";
+
+    const combinedForLog = [closingLine, emoji, linkLine].filter(Boolean).join("\n\n");
+    const withBotTurn = appendTurn(withUserTurn, "Bot", combinedForLog);
 
     await upsertSession({
       ...session,
       state: "READY",
       lang,
       story_text: withBotTurn,
-      msg_count: Number(session.msg_count || 0) + 1,
-      last_agent_prompt: finalReply,
+      msg_count: updatedCount,
+      last_agent_prompt: combinedForLog,
       last_bot_mode: "GENTLE_CLOSURE",
       question_streak: 0,
       turns_since_question: Number(session.turns_since_question ?? 99) + 1,
@@ -708,11 +751,11 @@ async function processTurn({ user_id, text, forcedLang }) {
       bot_turns_after_story: 0,
     });
 
-    return finalReply;
+    return {
+      text: closingLine,
+      extra_messages: [emoji, ...(linkLine ? [linkLine] : [])],
+    };
   }
-
-  const withUserTurn = appendTurn(session.story_text, "User", msg);
-  const updatedCount = Number(session.msg_count || 0) + 1;
 
   const aiTurn = await buildListenerReply({
     lang,
@@ -736,36 +779,6 @@ async function processTurn({ user_id, text, forcedLang }) {
 
   const nextBotTurnsAfterStory = storyWindowOpen ? botTurnsAfterStory + 1 : 0;
 
-  // If we have already reacted enough within a story window, end now and send the link immediately.
-  if (storyWindowOpen && nextBotTurnsAfterStory >= 2) {
-    const userOnlyStory = extractUserOnlyStory(withUserTurn);
-
-    const storyUrl = await maybeSaveStoryAndBuildLink({
-      user_id,
-      story_text: userOnlyStory,
-    });
-
-    replyText = storyLinkText(lang, storyUrl);
-    nextMode = "GENTLE_CLOSURE";
-    withBotTurn = appendTurn(withUserTurn, "Bot", replyText);
-
-    await upsertSession({
-      ...session,
-      state: "READY",
-      lang,
-      story_text: withBotTurn,
-      msg_count: updatedCount,
-      last_agent_prompt: replyText,
-      last_bot_mode: nextMode,
-      question_streak: 0,
-      turns_since_question: nextTurnsSinceQuestion,
-      bot_turns_after_story: 0,
-      story_window_open: false,
-    });
-
-    return replyText;
-  }
-
   await upsertSession({
     ...session,
     state: "LISTENING",
@@ -780,7 +793,7 @@ async function processTurn({ user_id, text, forcedLang }) {
     story_window_open: storyWindowOpen,
   });
 
-  return replyText;
+  return { text: replyText };
 }
 
 export async function handleMessage({ from, text }) {
@@ -793,7 +806,7 @@ export async function handleMessage({ from, text }) {
 }
 
 export async function handleAppTurn({ user_id, text, lang }) {
-  const reply = await processTurn({
+  const out = await processTurn({
     user_id: String(user_id || ""),
     text: String(text || ""),
     forcedLang: lang || null,
@@ -804,7 +817,7 @@ export async function handleAppTurn({ user_id, text, lang }) {
   return {
     screen: "BUILD",
     story_so_far: session?.story_text || "",
-    agent_prompt: reply,
+    agent_prompt: out?.text || "",
     seed_prompt: session?.seed_prompt || "",
   };
 }

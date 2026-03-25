@@ -10,12 +10,6 @@ console.log("[AI] AI_MODEL:", AI_MODEL);
 console.log("[AI] Node version:", process.version);
 console.log("[AI] typeof fetch:", typeof fetch);
 
-function langLabel(lang) {
-  if (lang === "hi") return "Hindi";
-  if (lang === "gu") return "Gujarati";
-  return "English";
-}
-
 function cleanText(text, fallback = "") {
   let out = String(text || "").trim();
   if (!out) return fallback;
@@ -89,13 +83,30 @@ function isShortReply(text) {
     "true",
     "right",
     "maybe",
+    "thanks",
+    "thank you",
+    "thik",
+    "theek",
+    "achha",
+    "accha",
+    "bas",
+    "done",
+    "good",
+    "nice",
     "बस",
     "हाँ",
     "हां",
     "कुछ नहीं",
+    "ठीक",
+    "अच्छा",
+    "धन्यवाद",
     "હા",
     "હું",
     "કંઈ નહીં",
+    "બરાબર",
+    "સારું",
+    "આભાર",
+    "સાચી વાત",
   ];
 
   if (exactShorts.includes(t)) return true;
@@ -112,6 +123,10 @@ function isShortReply(text) {
     /^no i\b/,
     /^ok\b/,
     /^okay\b/,
+    /^thanks\b/,
+    /^thank you\b/,
+    /^સાચી વાત\b/,
+    /^બરાબર\b/,
   ];
 
   return shortPatterns.some((rx) => rx.test(t));
@@ -126,7 +141,12 @@ function isRichNarrativeTurn(text) {
 
   if (wc >= 18) return true;
   if (wc >= 12 && /[,.]/.test(latest)) return true;
-  if (wc >= 14 && /\b(when|while|because|still|after|before|then|used to|remember|felt|saw|heard|smell|sound)\b/i.test(latest)) {
+  if (
+    wc >= 14 &&
+    /\b(when|while|because|still|after|before|then|used to|remember|felt|saw|heard|smell|sound)\b/i.test(
+      latest
+    )
+  ) {
     return true;
   }
 
@@ -140,8 +160,6 @@ function hasSubstantialNewDetail(latestUser, previousUser = "") {
   if (!latest) return false;
   if (isShortReply(latest)) return false;
 
-  // Much stricter than before:
-  // only richer, more developed turns should allow another question
   if (isRichNarrativeTurn(latest)) return true;
 
   const latestNorm = normalizeForCompare(latest);
@@ -218,7 +236,8 @@ function groundedFallbackAck(lang, latestUser = "") {
 
   if (lang === "hi") {
     if (t.includes("mango") || t.includes("tree")) return "यह बचपन की बहुत जीवंत याद लगती है।";
-    if (t.includes("grandmother") || t.includes("mother") || t.includes("father")) return "यह किसी अपने से जुड़ी हुई याद लगती है।";
+    if (t.includes("grandmother") || t.includes("mother") || t.includes("father"))
+      return "यह किसी अपने से जुड़ी हुई याद लगती है।";
     if (t.includes("courtyard") || t.includes("afternoon")) return "यह दृश्य बहुत साफ़-सा उभरता है।";
     if (t.includes("friend") || t.includes("cousin")) return "इसमें साथ का एहसास बहुत साफ़ आता है।";
     return "यह याद काफ़ी सजीव लग रही है।";
@@ -226,16 +245,19 @@ function groundedFallbackAck(lang, latestUser = "") {
 
   if (lang === "gu") {
     if (t.includes("mango") || t.includes("tree")) return "આ બાળપણની ખૂબ જીવંત યાદ લાગે છે.";
-    if (t.includes("grandmother") || t.includes("mother") || t.includes("father")) return "આ કોઈ નજીકના વ્યક્તિ સાથે જોડાયેલી યાદ લાગે છે.";
+    if (t.includes("grandmother") || t.includes("mother") || t.includes("father"))
+      return "આ કોઈ નજીકના વ્યક્તિ સાથે જોડાયેલી યાદ લાગે છે.";
     if (t.includes("courtyard") || t.includes("afternoon")) return "આ દૃશ્ય ખૂબ સ્પષ્ટ લાગે છે.";
     if (t.includes("friend") || t.includes("cousin")) return "આમાં સાથેપણાની લાગણી સ્પષ્ટ આવે છે.";
     return "આ યાદ ખૂબ જીવંત લાગે છે.";
   }
 
   if (t.includes("mango") || t.includes("tree")) return "That sounds like such a vivid childhood memory.";
-  if (t.includes("grandmother") || t.includes("mother") || t.includes("father")) return "That sounds like a memory closely tied to someone important.";
+  if (t.includes("grandmother") || t.includes("mother") || t.includes("father"))
+    return "That sounds like a memory closely tied to someone important.";
   if (t.includes("courtyard") || t.includes("afternoon")) return "That scene feels very clear.";
-  if (t.includes("friend") || t.includes("cousin") || t.includes("family")) return "It sounds like other people were very much part of that moment too.";
+  if (t.includes("friend") || t.includes("cousin") || t.includes("family"))
+    return "It sounds like other people were very much part of that moment too.";
   return "That sounds like a vivid memory.";
 }
 
@@ -244,7 +266,8 @@ function groundedFallbackQuestion(lang, latestUser = "") {
 
   if (lang === "hi") {
     if (t.includes("mango") || t.includes("tree")) return "पेड़ पर ऊपर पहुँचकर आपको कैसा लगता था?";
-    if (t.includes("grandmother") || t.includes("mother") || t.includes("father")) return "वे वहाँ बैठकर आम तौर पर क्या करती थीं?";
+    if (t.includes("grandmother") || t.includes("mother") || t.includes("father"))
+      return "वे वहाँ बैठकर आम तौर पर क्या करती थीं?";
     if (t.includes("courtyard")) return "उस आँगन की आपको सबसे ज़्यादा क्या याद है?";
     if (t.includes("friend") || t.includes("cousin")) return "क्या आप सब वहाँ बैठकर बातें भी करते थे?";
     return "उस बात में आपको सबसे ज़्यादा क्या याद है?";
@@ -252,14 +275,16 @@ function groundedFallbackQuestion(lang, latestUser = "") {
 
   if (lang === "gu") {
     if (t.includes("mango") || t.includes("tree")) return "ઝાડની ટોચ સુધી પહોંચીને તમને કેવું લાગતું હતું?";
-    if (t.includes("grandmother") || t.includes("mother") || t.includes("father")) return "તેઓ ત્યાં બેઠા બેઠા સામાન્ય રીતે શું કરતા હતા?";
+    if (t.includes("grandmother") || t.includes("mother") || t.includes("father"))
+      return "તેઓ ત્યાં બેઠા બેઠા સામાન્ય રીતે શું કરતા હતા?";
     if (t.includes("courtyard")) return "એ આંગણાની તમને સૌથી વધુ શું યાદ છે?";
     if (t.includes("friend") || t.includes("cousin")) return "તમે બધાં ત્યાં બેઠા બેઠા વાતો પણ કરતા હતા?";
     return "તે વાતમાં તમને સૌથી વધુ શું યાદ છે?";
   }
 
   if (t.includes("mango") || t.includes("tree")) return "What did it feel like being up there among the branches?";
-  if (t.includes("grandmother") || t.includes("mother") || t.includes("father")) return "What did she usually do while sitting there?";
+  if (t.includes("grandmother") || t.includes("mother") || t.includes("father"))
+    return "What did she usually do while sitting there?";
   if (t.includes("courtyard")) return "What do you remember most about that courtyard?";
   if (t.includes("friend") || t.includes("cousin")) return "Did you all talk much while you were there?";
   return "What do you remember most about that?";
@@ -274,20 +299,11 @@ function shouldAskThisTurn({
 }) {
   if (!latestUser) return false;
 
-  // Never make the bot feel interview-like early on
   if (Number(msg_count || 0) <= 1) return false;
-
-  // Never ask right after an ask
   if (last_bot_mode === "ASK") return false;
-
-  // Cooldown memory from session
   if (Number(question_streak || 0) >= 1) return false;
   if (Number(turns_since_question || 0) < 2) return false;
-
-  // Short answers should never trigger new questions
   if (isShortReply(latestUser)) return false;
-
-  // Only richer narrative turns justify asking
   if (!isRichNarrativeTurn(latestUser)) return false;
 
   return true;
@@ -364,6 +380,8 @@ Primary design principles:
 - do not detect story endings
 - do not organize narratives
 - treat every memory fragment as meaningful
+- the user may already have shared a complete memory; in that case, acknowledge it briefly rather than trying to extend it
+- if the user seems finished, allow the conversation to settle naturally
 - occasionally use a small listening signal like "Accha…", "Haan…", "I see", or "Hmm…"
 - occasionally use a small emoji like 🙂 🙏 😊, but rarely
 - never put an emoji inside a question
@@ -444,7 +462,6 @@ Write one natural WhatsApp reply.`;
     parsed = parseJsonMaybe(raw);
   }
 
-  // Fallback should be calm and non-questioning
   if (!parsed || !parsed.reply) {
     return {
       mode: "ACKNOWLEDGMENT",
@@ -462,7 +479,6 @@ Write one natural WhatsApp reply.`;
     shouldAsk = false;
   }
 
-  // repetition guard
   if (
     normalizeForCompare(reply) &&
     normalizeForCompare(reply) === normalizeForCompare(last_bot_reply)
@@ -472,18 +488,15 @@ Write one natural WhatsApp reply.`;
     shouldAsk = false;
   }
 
-  // Model cannot override hard rhythm rule
   if (!askAllowed) {
     shouldAsk = false;
   }
 
-  // Extra guard: if previous bot asked, do not ask again
   const userAskedQuestion = /[?؟]$/.test(String(latestUser || "").trim());
   if (last_bot_mode === "ASK" && !userAskedQuestion) {
     shouldAsk = false;
   }
 
-  // short replies should not trigger a question
   if (isShortReply(latestUser)) {
     shouldAsk = false;
   }
@@ -510,13 +523,13 @@ Write one natural WhatsApp reply.`;
 
   if (shouldAsk) {
     if (!/[?؟]/.test(reply)) {
-      const ackOnly = stripAllQuestionSentences(reply) || groundedFallbackAck(lang, latestUser);
+      const ackOnly =
+        stripAllQuestionSentences(reply) || groundedFallbackAck(lang, latestUser);
       reply = `${ackOnly}\n${groundedFallbackQuestion(lang, latestUser)}`.trim();
     }
     reply = keepAtMostOneQuestion(reply);
   }
 
-  // remove emoji from question lines
   if (/[?؟]/.test(reply)) {
     const lines = reply
       .split("\n")

@@ -5,14 +5,9 @@ import path from "path";
 
 import { getSheetsClient, readRange } from "./sheets.js";
 import { generateListenerTurn } from "./ai.js";
-import { saveStory } from "./storyStore.js";
 
 const SHEET_ID = process.env.GOOGLE_SHEET_ID;
 const SESSIONS_TAB = "sessions";
-const STORY_BASE_URL =
-  process.env.STORY_BASE_URL ||
-  process.env.APP_BASE_URL ||
-  "";
 
 console.log("[BOOT] conversation.js loaded");
 
@@ -87,10 +82,6 @@ function isClosureSignal(text) {
     "હા",
     "આભાર",
     "સાચી વાત",
-    "સાચી વાત છે",
-    "હા, સાચી વાત છે",
-    "haha",
-    "lol",
   ];
 
   if (exact.includes(t)) return true;
@@ -197,16 +188,10 @@ function stoppedText(lang) {
   return "Okay. Write START anytime if you would like to continue.";
 }
 
-function gentleClosingText(lang) {
-  if (lang === "hi") return "यह याद सुनकर अच्छा लगा।";
-  if (lang === "gu") return "આ યાદ સાંભળીને સારું લાગ્યું.";
-  return "It was lovely hearing this memory.";
-}
-
-function storyLinkIntroText(lang) {
-  if (lang === "hi") return "यह आपकी कहानी का लिंक है:";
-  if (lang === "gu") return "આ તમારી વાર્તાનો લિંક છે:";
-  return "Here is your story link:";
+function softClosingText(lang) {
+  if (lang === "hi") return "🙂";
+  if (lang === "gu") return "🙂";
+  return "🙂";
 }
 
 function shouldTreatAsMemory(text) {
@@ -295,96 +280,6 @@ function lastTurns(history, maxLines = 10) {
     .filter(Boolean);
 
   return lines.slice(-maxLines).join("\n");
-}
-
-function normalizeMinimal(text) {
-  return String(text || "")
-    .toLowerCase()
-    .replace(/[^\p{L}\p{N}\s]/gu, "")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function extractUserOnlyStory(history) {
-  const lines = String(history || "")
-    .split("\n")
-    .map((x) => x.trim())
-    .filter(Boolean);
-
-  const filler = new Set([
-    "હા",
-    "હું",
-    "બરાબર",
-    "સારું",
-    "સાચી વાત",
-    "સાચી વાત છે",
-    "ok",
-    "okay",
-    "yes",
-    "hmm",
-    "hm",
-    "haha",
-    "lol",
-    "right",
-    "true",
-  ]);
-
-  const seen = new Set();
-
-  const userLines = lines
-    .filter((line) => line.startsWith("User:"))
-    .map((line) => line.replace(/^User:\s*/, "").trim())
-    .filter((text) => {
-      if (!text) return false;
-
-      const normalized = normalizeMinimal(text);
-
-      if (!normalized) return false;
-      if (filler.has(normalized)) return false;
-      if (normalized.length < 4) return false;
-      if (seen.has(normalized)) return false;
-
-      seen.add(normalized);
-      return true;
-    });
-
-  return userLines.join("\n\n").trim();
-}
-
-function firstMeaningfulLine(storyText) {
-  const parts = String(storyText || "")
-    .split(/\n+/)
-    .map((x) => x.trim())
-    .filter(Boolean);
-
-  return parts[0] || "";
-}
-
-async function maybeSaveStoryAndBuildLink({ user_id, story_text }) {
-  const cleanStory = String(story_text || "").trim();
-  if (!cleanStory) return "";
-
-  const title = firstMeaningfulLine(cleanStory).slice(0, 80);
-
-  try {
-    const saved = await saveStory({
-      user_id,
-      story_text: cleanStory,
-      transcript_text: cleanStory,
-      polished_story_text: cleanStory,
-      publish: false,
-      privacy: "private",
-      title,
-    });
-
-    if (!saved?.id) return "";
-    if (!STORY_BASE_URL) return "";
-
-    return `${STORY_BASE_URL}/${saved.id}`;
-  } catch (err) {
-    console.error("[STORY SAVE ERROR]", err);
-    return "";
-  }
 }
 
 async function loadSession(user_id) {
@@ -613,7 +508,7 @@ async function processTurn({ user_id, text, forcedLang }) {
       story_window_open: false,
       bot_turns_after_story: 0,
     });
-    return { text: stoppedText(lang) };
+    return stoppedText(lang);
   }
 
   if (lower === "start" || lower === "reset") {
@@ -638,11 +533,11 @@ async function processTurn({ user_id, text, forcedLang }) {
       story_window_open: false,
     });
 
-    return { text: open };
+    return open;
   }
 
   if (session.state === "STOPPED") {
-    return { text: "" };
+    return "";
   }
 
   if (!msg || isGreetingOnly(msg)) {
@@ -660,7 +555,7 @@ async function processTurn({ user_id, text, forcedLang }) {
       bot_turns_after_story: 0,
     });
 
-    return { text: open };
+    return open;
   }
 
   if (isTopicRequest(msg)) {
@@ -680,7 +575,7 @@ async function processTurn({ user_id, text, forcedLang }) {
       bot_turns_after_story: 0,
     });
 
-    return { text: reply };
+    return reply;
   }
 
   if (!shouldTreatAsMemory(msg)) {
@@ -698,52 +593,41 @@ async function processTurn({ user_id, text, forcedLang }) {
       bot_turns_after_story: 0,
     });
 
-    return { text: open };
+    return open;
   }
 
   let storyWindowOpen = Boolean(session.story_window_open);
   let botTurnsAfterStory = Number(session.bot_turns_after_story || 0);
 
-  // Start a fresh story window when a new full story arrives.
   if (isLikelyFullStory(msg)) {
     storyWindowOpen = true;
     botTurnsAfterStory = 0;
-
-    session = {
-      ...session,
-      story_text: "",
-      msg_count: 0,
-      question_streak: 0,
-      turns_since_question: 99,
-    };
   }
 
-  const withUserTurn = appendTurn(session.story_text, "User", msg);
-  const updatedCount = Number(session.msg_count || 0) + 1;
-
-  // If we are already in a story window and the user now gives a short closure signal,
-  // send a closing line, then emoji, then link as separate messages.
-  if (storyWindowOpen && isClosureSignal(msg) && botTurnsAfterStory >= 2) {
-    const userOnlyStory = extractUserOnlyStory(withUserTurn);
-    const storyUrl = await maybeSaveStoryAndBuildLink({
-      user_id,
-      story_text: userOnlyStory,
+  if (storyWindowOpen && session.last_bot_mode === "GENTLE_CLOSURE" && isClosureSignal(msg)) {
+    await upsertSession({
+      ...session,
+      state: "READY",
+      lang,
+      story_window_open: false,
+      bot_turns_after_story: 0,
+      turns_since_question: Number(session.turns_since_question ?? 99) + 1,
     });
+    return "";
+  }
 
-    const closingLine = gentleClosingText(lang);
-    const emoji = "🙂";
-    const linkLine = storyUrl ? `${storyLinkIntroText(lang)}\n${storyUrl}` : "";
-
-    const combinedForLog = [closingLine, emoji, linkLine].filter(Boolean).join("\n\n");
-    const withBotTurn = appendTurn(withUserTurn, "Bot", combinedForLog);
+  if (storyWindowOpen && botTurnsAfterStory >= 2) {
+    const reply = softClosingText(lang);
+    const withUserTurn = appendTurn(session.story_text, "User", msg);
+    const withBotTurn = appendTurn(withUserTurn, "Bot", reply);
 
     await upsertSession({
       ...session,
       state: "READY",
       lang,
       story_text: withBotTurn,
-      msg_count: updatedCount,
-      last_agent_prompt: combinedForLog,
+      msg_count: Number(session.msg_count || 0) + 1,
+      last_agent_prompt: reply,
       last_bot_mode: "GENTLE_CLOSURE",
       question_streak: 0,
       turns_since_question: Number(session.turns_since_question ?? 99) + 1,
@@ -751,11 +635,11 @@ async function processTurn({ user_id, text, forcedLang }) {
       bot_turns_after_story: 0,
     });
 
-    return {
-      text: closingLine,
-      extra_messages: [emoji, ...(linkLine ? [linkLine] : [])],
-    };
+    return reply;
   }
+
+  const withUserTurn = appendTurn(session.story_text, "User", msg);
+  const updatedCount = Number(session.msg_count || 0) + 1;
 
   const aiTurn = await buildListenerReply({
     lang,
@@ -768,9 +652,9 @@ async function processTurn({ user_id, text, forcedLang }) {
     turns_since_question: Number(session.turns_since_question ?? 99),
   });
 
-  let replyText = aiTurn?.text || "";
-  let nextMode = aiTurn?.mode || "ACKNOWLEDGMENT";
-  let withBotTurn = appendTurn(withUserTurn, "Bot", replyText);
+  const replyText = aiTurn?.text || "";
+  const nextMode = aiTurn?.mode || "ACKNOWLEDGMENT";
+  const withBotTurn = appendTurn(withUserTurn, "Bot", replyText);
 
   const nextQuestionStreak =
     nextMode === "ASK" ? Number(session.question_streak || 0) + 1 : 0;
@@ -778,6 +662,7 @@ async function processTurn({ user_id, text, forcedLang }) {
     nextMode === "ASK" ? 0 : Number(session.turns_since_question ?? 99) + 1;
 
   const nextBotTurnsAfterStory = storyWindowOpen ? botTurnsAfterStory + 1 : 0;
+  const nextStoryWindowOpen = nextMode === "GENTLE_CLOSURE" ? false : storyWindowOpen;
 
   await upsertSession({
     ...session,
@@ -790,10 +675,10 @@ async function processTurn({ user_id, text, forcedLang }) {
     question_streak: nextQuestionStreak,
     turns_since_question: nextTurnsSinceQuestion,
     bot_turns_after_story: nextBotTurnsAfterStory,
-    story_window_open: storyWindowOpen,
+    story_window_open: nextStoryWindowOpen,
   });
 
-  return { text: replyText };
+  return replyText;
 }
 
 export async function handleMessage({ from, text }) {
@@ -806,7 +691,7 @@ export async function handleMessage({ from, text }) {
 }
 
 export async function handleAppTurn({ user_id, text, lang }) {
-  const out = await processTurn({
+  const reply = await processTurn({
     user_id: String(user_id || ""),
     text: String(text || ""),
     forcedLang: lang || null,
@@ -817,7 +702,7 @@ export async function handleAppTurn({ user_id, text, lang }) {
   return {
     screen: "BUILD",
     story_so_far: session?.story_text || "",
-    agent_prompt: out?.text || "",
+    agent_prompt: reply,
     seed_prompt: session?.seed_prompt || "",
   };
 }

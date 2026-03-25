@@ -72,7 +72,10 @@ export async function saveStory({
   const id = makeId();
   const created_at = new Date().toISOString();
 
-  const finalPrivacy = privacy || (publish ? "share" : "private");
+  const finalPrivacy =
+    privacy ||
+    (publish ? "share" : "private");
+
   const finalPolished = String(polished_story_text || story_text || "").trim();
   const finalTranscript = String(transcript_text || story_text || "").trim();
 
@@ -214,44 +217,4 @@ export async function getStoriesByUser({ user_id, onlyPublic = false }) {
     .filter((story) => (onlyPublic ? story.publish === true : true));
 
   return stories;
-}
-
-export async function getStoryById({ id }) {
-  const { rows } = await getSheetRows();
-
-  if (!rows.length) return null;
-
-  const headers = rows[0];
-  const data = rows.slice(1);
-
-  const idIndex = findHeaderIndex(headers, "id");
-  if (idIndex === -1) return null;
-
-  const found = data.find((row) => String(row[idIndex] || "").trim() === String(id || "").trim());
-  if (!found) return null;
-
-  const publishValue = pickFirst(found, headers, ["publish"]);
-  const privacyValue = String(pickFirst(found, headers, ["privacy"])).trim().toLowerCase();
-  const publish =
-    publishValue !== ""
-      ? toBool(publishValue)
-      : privacyValue === "share" || privacyValue === "public";
-
-  const polished = pickFirst(found, headers, ["polished_story_text"]);
-  const storyText = pickFirst(found, headers, ["story_text"]);
-  const transcript = pickFirst(found, headers, ["transcript_text"]);
-
-  return {
-    id: pickFirst(found, headers, ["id"]),
-    user_id: pickFirst(found, headers, ["user_id"]),
-    title: pickFirst(found, headers, ["title"]),
-    story_text: polished || storyText || transcript || "",
-    transcript_text: transcript || storyText || "",
-    polished_story_text: polished || storyText || "",
-    publish,
-    privacy: privacyValue || (publish ? "share" : "private"),
-    audio_url: pickFirst(found, headers, ["audio_url"]),
-    created_at: pickFirst(found, headers, ["created_at"]),
-    updated_at: pickFirst(found, headers, ["updated_at"]),
-  };
 }

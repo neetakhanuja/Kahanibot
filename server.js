@@ -2,7 +2,7 @@ import "dotenv/config";
 import express from "express";
 import path from "path";
 import * as convo from "./src/conversation.js";
-import { getStoriesByUser, getStoryById } from "./src/storyStore.js";
+import { getStoriesByUser } from "./src/storyStore.js";
 
 const app = express();
 
@@ -26,20 +26,6 @@ function formatDate(iso) {
   } catch {
     return iso || "";
   }
-}
-
-function textToParagraphs(s) {
-  return String(s || "")
-    .split(/\n{2,}/)
-    .map((p) => p.trim())
-    .filter(Boolean)
-    .map(
-      (p) =>
-        `<p style="margin:0 0 18px 0; font-size:20px; line-height:1.9; color:#111;">${escapeHtml(
-          p
-        ).replaceAll("\n", "<br/>")}</p>`
-    )
-    .join("");
 }
 
 async function sendWhatsAppText(to, text) {
@@ -195,12 +181,15 @@ async function transcribeAudioFromUrl(mediaUrl) {
   }
 }
 
+// Health
 app.get("/health", (req, res) => res.status(200).send("OK"));
 
+// Optional web app route
 app.get("/app", (req, res) => {
   res.sendFile(path.resolve("public", "index.html"));
 });
 
+// Local testing route
 app.post("/api/turn", async (req, res) => {
   try {
     const { user_id, text, lang } = req.body || {};
@@ -222,6 +211,7 @@ app.post("/api/turn", async (req, res) => {
   }
 });
 
+// Public stories page
 app.get("/u/:userId", async (req, res) => {
   try {
     const userId = req.params.userId;
@@ -245,7 +235,7 @@ app.get("/u/:userId", async (req, res) => {
       .map((s) => {
         const date = escapeHtml(formatDate(s.created_at));
         const title = escapeHtml(s.title || "");
-        const text = textToParagraphs(s.story_text || "");
+        const text = escapeHtml(s.story_text || "").replaceAll("\n", "<br/>");
         const audioUrl = String(s.audio_url || "").trim();
 
         return `
@@ -253,7 +243,7 @@ app.get("/u/:userId", async (req, res) => {
             background:#fff;
             border:1px solid #e6e6e6;
             border-radius:12px;
-            padding:24px;
+            padding:16px;
             margin:16px 0;
             box-shadow:0 1px 2px rgba(0,0,0,0.04);
           ">
@@ -262,10 +252,12 @@ app.get("/u/:userId", async (req, res) => {
             </div>
             ${
               title
-                ? `<h2 style="font-size:22px; margin:0 0 16px 0; color:#111;">${title}</h2>`
+                ? `<h2 style="font-size:18px; margin:0 0 10px 0; color:#111;">${title}</h2>`
                 : ""
             }
-            <div>${text}</div>
+            <div style="font-size:16px; line-height:1.7; color:#111;">
+              ${text}
+            </div>
             ${
               audioUrl
                 ? `<div style="margin-top:14px;">
@@ -286,11 +278,11 @@ app.get("/u/:userId", async (req, res) => {
         <head>
           <meta charset="utf-8" />
           <meta name="viewport" content="width=device-width, initial-scale=1" />
-          <title>Stories</title>
+          <title>Stories by ${escapeHtml(userId)}</title>
         </head>
         <body style="font-family:system-ui,Arial; background:#fafafa; color:#111;">
           <div style="max-width:780px; margin:40px auto; padding:0 16px;">
-            <h1 style="margin:0 0 8px 0;">Stories</h1>
+            <h1 style="margin:0 0 8px 0;">Stories by ${escapeHtml(userId)}</h1>
             <div style="color:#444; margin-bottom:20px;">
               Showing public stories only.
             </div>
@@ -308,73 +300,13 @@ app.get("/u/:userId", async (req, res) => {
   }
 });
 
-app.get("/story/:id", async (req, res) => {
-  try {
-    const story = await getStoryById({ id: req.params.id });
-
-    if (!story) {
-      return res.status(404).send("Story not found.");
-    }
-
-    const date = escapeHtml(formatDate(story.created_at));
-    const title = escapeHtml(story.title || "");
-    const text = textToParagraphs(story.story_text || "");
-    const audioUrl = String(story.audio_url || "").trim();
-
-    const html = `
-      <!doctype html>
-      <html>
-        <head>
-          <meta charset="utf-8" />
-          <meta name="viewport" content="width=device-width, initial-scale=1" />
-          <title>${title || "Story"}</title>
-        </head>
-        <body style="font-family:system-ui,Arial; background:#fafafa; color:#111;">
-          <div style="max-width:760px; margin:40px auto; padding:0 16px;">
-            <article style="
-              background:#fff;
-              border:1px solid #e6e6e6;
-              border-radius:14px;
-              padding:28px;
-              box-shadow:0 1px 3px rgba(0,0,0,0.06);
-            ">
-              <div style="color:#666; font-size:13px; margin-bottom:10px;">
-                ${date}
-              </div>
-              ${
-                title
-                  ? `<h1 style="font-size:28px; margin:0 0 18px 0; color:#111;">${title}</h1>`
-                  : ""
-              }
-              <div>${text}</div>
-              ${
-                audioUrl
-                  ? `<div style="margin-top:18px;">
-                      <audio controls preload="none" style="width:100%;">
-                        <source src="${escapeHtml(audioUrl)}" />
-                      </audio>
-                     </div>`
-                  : ""
-              }
-            </article>
-          </div>
-        </body>
-      </html>
-    `;
-
-    res.setHeader("Content-Type", "text/html; charset=utf-8");
-    return res.status(200).send(html);
-  } catch (err) {
-    console.error("Error in /story/:id:", err);
-    return res.status(500).send("Server error");
-  }
-});
-
+// WhatsApp webhook
 app.post("/webhook", async (req, res) => {
   try {
     console.log("Webhook received:");
     console.log(JSON.stringify(req.body, null, 2));
 
+    // Acknowledge immediately
     res.status(200).json({ ok: true });
 
     const event = req.body?.event;
@@ -431,22 +363,7 @@ app.post("/webhook", async (req, res) => {
 
     if (!reply) return;
 
-    if (typeof reply === "string") {
-      if (reply.trim()) await sendWhatsAppText(to, reply);
-      return;
-    }
-
-    if (reply.text && String(reply.text).trim()) {
-      await sendWhatsAppText(to, reply.text);
-    }
-
-    if (Array.isArray(reply.extra_messages)) {
-      for (const item of reply.extra_messages) {
-        if (String(item || "").trim()) {
-          await sendWhatsAppText(to, String(item).trim());
-        }
-      }
-    }
+    await sendWhatsAppText(to, reply);
   } catch (err) {
     console.error("Webhook error:", err);
   }

@@ -10,7 +10,7 @@ import { saveStory } from "./storyStore.js";
 const SHEET_ID = process.env.GOOGLE_SHEET_ID;
 const SESSIONS_TAB = "sessions";
 const STORY_BASE_URL =
-  process.env.STORY_BASE_URL || "https://kahanibot-l0l7.onrender.com/story";
+  process.env.STORY_BASE_URL || "https://kahanibot-production.up.railway.app/story";
 
 console.log("[BOOT] conversation.js loaded");
 

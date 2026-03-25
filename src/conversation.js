@@ -10,7 +10,9 @@ import { saveStory } from "./storyStore.js";
 const SHEET_ID = process.env.GOOGLE_SHEET_ID;
 const SESSIONS_TAB = "sessions";
 const STORY_BASE_URL =
-  process.env.STORY_BASE_URL || "https://kahanibot-production.up.railway.app/story";
+  process.env.STORY_BASE_URL ||
+  process.env.APP_BASE_URL ||
+  "";
 
 console.log("[BOOT] conversation.js loaded");
 
@@ -191,17 +193,17 @@ function stoppedText(lang) {
   return "Okay. Write START anytime if you would like to continue.";
 }
 
-function softClosingEmoji() {
-  return "🙂";
-}
-
 function storyLinkText(lang, url) {
+  if (!url) return "🙂";
+
   if (lang === "hi") {
     return `🙂\n\nयह आपकी कहानी का लिंक है:\n${url}`;
   }
+
   if (lang === "gu") {
     return `🙂\n\nઆ તમારી વાર્તાનો લિંક છે:\n${url}`;
   }
+
   return `🙂\n\nHere is your story link:\n${url}`;
 }
 
@@ -307,7 +309,7 @@ function extractUserOnlyStory(history) {
   return userLines.join("\n\n").trim();
 }
 
-async function maybeSaveStoryAndBuildLink({ user_id, lang, story_text }) {
+async function maybeSaveStoryAndBuildLink({ user_id, story_text }) {
   const cleanStory = String(story_text || "").trim();
   if (!cleanStory) return "";
 
@@ -321,6 +323,9 @@ async function maybeSaveStoryAndBuildLink({ user_id, lang, story_text }) {
       privacy: "private",
       title: "",
     });
+
+    if (!saved?.id) return "";
+    if (!STORY_BASE_URL) return "";
 
     return `${STORY_BASE_URL}/${saved.id}`;
   } catch (err) {
@@ -651,50 +656,35 @@ async function processTurn({ user_id, text, forcedLang }) {
     botTurnsAfterStory = 0;
   }
 
-  if (storyWindowOpen && session.last_bot_mode === "GENTLE_CLOSURE" && isClosureSignal(msg)) {
-    const userOnlyStory = extractUserOnlyStory(session.story_text);
+  // If we are already in a story window and the user now gives a short closure signal,
+  // save the story immediately and send the link.
+  if (storyWindowOpen && isClosureSignal(msg) && botTurnsAfterStory >= 1) {
+    const withUserTurn = appendTurn(session.story_text, "User", msg);
+    const userOnlyStory = extractUserOnlyStory(withUserTurn);
+
     const storyUrl = await maybeSaveStoryAndBuildLink({
       user_id,
-      lang,
       story_text: userOnlyStory,
     });
 
-    const finalReply = storyUrl ? storyLinkText(lang, storyUrl) : "";
+    const finalReply = storyLinkText(lang, storyUrl);
+    const withBotTurn = appendTurn(withUserTurn, "Bot", finalReply);
 
     await upsertSession({
       ...session,
       state: "READY",
       lang,
-      last_agent_prompt: finalReply,
-      last_bot_mode: "READY",
-      story_window_open: false,
-      bot_turns_after_story: 0,
-      turns_since_question: Number(session.turns_since_question ?? 99) + 1,
-    });
-
-    return finalReply;
-  }
-
-  if (storyWindowOpen && botTurnsAfterStory >= 2) {
-    const reply = softClosingEmoji();
-    const withUserTurn = appendTurn(session.story_text, "User", msg);
-    const withBotTurn = appendTurn(withUserTurn, "Bot", reply);
-
-    await upsertSession({
-      ...session,
-      state: "LISTENING",
-      lang,
       story_text: withBotTurn,
       msg_count: Number(session.msg_count || 0) + 1,
-      last_agent_prompt: reply,
+      last_agent_prompt: finalReply,
       last_bot_mode: "GENTLE_CLOSURE",
       question_streak: 0,
       turns_since_question: Number(session.turns_since_question ?? 99) + 1,
-      story_window_open: true,
-      bot_turns_after_story: botTurnsAfterStory + 1,
+      story_window_open: false,
+      bot_turns_after_story: 0,
     });
 
-    return reply;
+    return finalReply;
   }
 
   const withUserTurn = appendTurn(session.story_text, "User", msg);
@@ -711,9 +701,9 @@ async function processTurn({ user_id, text, forcedLang }) {
     turns_since_question: Number(session.turns_since_question ?? 99),
   });
 
-  const replyText = aiTurn?.text || "";
-  const nextMode = aiTurn?.mode || "ACKNOWLEDGMENT";
-  const withBotTurn = appendTurn(withUserTurn, "Bot", replyText);
+  let replyText = aiTurn?.text || "";
+  let nextMode = aiTurn?.mode || "ACKNOWLEDGMENT";
+  let withBotTurn = appendTurn(withUserTurn, "Bot", replyText);
 
   const nextQuestionStreak =
     nextMode === "ASK" ? Number(session.question_streak || 0) + 1 : 0;
@@ -721,8 +711,36 @@ async function processTurn({ user_id, text, forcedLang }) {
     nextMode === "ASK" ? 0 : Number(session.turns_since_question ?? 99) + 1;
 
   const nextBotTurnsAfterStory = storyWindowOpen ? botTurnsAfterStory + 1 : 0;
-  const nextStoryWindowOpen =
-    nextMode === "GENTLE_CLOSURE" ? true : storyWindowOpen;
+
+  // If we have already reacted enough within a story window, end now and send the link immediately.
+  if (storyWindowOpen && nextBotTurnsAfterStory >= 2) {
+    const userOnlyStory = extractUserOnlyStory(withUserTurn);
+
+    const storyUrl = await maybeSaveStoryAndBuildLink({
+      user_id,
+      story_text: userOnlyStory,
+    });
+
+    replyText = storyLinkText(lang, storyUrl);
+    nextMode = "GENTLE_CLOSURE";
+    withBotTurn = appendTurn(withUserTurn, "Bot", replyText);
+
+    await upsertSession({
+      ...session,
+      state: "READY",
+      lang,
+      story_text: withBotTurn,
+      msg_count: updatedCount,
+      last_agent_prompt: replyText,
+      last_bot_mode: nextMode,
+      question_streak: 0,
+      turns_since_question: nextTurnsSinceQuestion,
+      bot_turns_after_story: 0,
+      story_window_open: false,
+    });
+
+    return replyText;
+  }
 
   await upsertSession({
     ...session,
@@ -735,7 +753,7 @@ async function processTurn({ user_id, text, forcedLang }) {
     question_streak: nextQuestionStreak,
     turns_since_question: nextTurnsSinceQuestion,
     bot_turns_after_story: nextBotTurnsAfterStory,
-    story_window_open: nextStoryWindowOpen,
+    story_window_open: storyWindowOpen,
   });
 
   return replyText;

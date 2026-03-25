@@ -2,7 +2,7 @@ import "dotenv/config";
 import express from "express";
 import path from "path";
 import * as convo from "./src/conversation.js";
-import { getStoriesByUser } from "./src/storyStore.js";
+import { getStoriesByUser, getStoryById } from "./src/storyStore.js";
 
 const app = express();
 
@@ -300,13 +300,77 @@ app.get("/u/:userId", async (req, res) => {
   }
 });
 
+// Single story page
+app.get("/story/:id", async (req, res) => {
+  try {
+    const story = await getStoryById({ id: req.params.id });
+
+    if (!story) {
+      return res.status(404).send("Story not found.");
+    }
+
+    const date = escapeHtml(formatDate(story.created_at));
+    const title = escapeHtml(story.title || "");
+    const text = escapeHtml(story.story_text || "").replaceAll("\n", "<br/>");
+    const audioUrl = String(story.audio_url || "").trim();
+
+    const html = `
+      <!doctype html>
+      <html>
+        <head>
+          <meta charset="utf-8" />
+          <meta name="viewport" content="width=device-width, initial-scale=1" />
+          <title>${title || "Story"}</title>
+        </head>
+        <body style="font-family:system-ui,Arial; background:#fafafa; color:#111;">
+          <div style="max-width:760px; margin:40px auto; padding:0 16px;">
+            <article style="
+              background:#fff;
+              border:1px solid #e6e6e6;
+              border-radius:14px;
+              padding:24px;
+              box-shadow:0 1px 3px rgba(0,0,0,0.06);
+            ">
+              <div style="color:#666; font-size:13px; margin-bottom:10px;">
+                ${date}
+              </div>
+              ${
+                title
+                  ? `<h1 style="font-size:24px; margin:0 0 16px 0; color:#111;">${title}</h1>`
+                  : ""
+              }
+              <div style="font-size:18px; line-height:1.8; color:#111;">
+                ${text}
+              </div>
+              ${
+                audioUrl
+                  ? `<div style="margin-top:18px;">
+                      <audio controls preload="none" style="width:100%;">
+                        <source src="${escapeHtml(audioUrl)}" />
+                      </audio>
+                     </div>`
+                  : ""
+              }
+            </article>
+          </div>
+        </body>
+      </html>
+    `;
+
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    return res.status(200).send(html);
+  } catch (err) {
+    console.error("Error in /story/:id:", err);
+    return res.status(500).send("Server error");
+  }
+});
+
 // WhatsApp webhook
 app.post("/webhook", async (req, res) => {
   try {
     console.log("Webhook received:");
     console.log(JSON.stringify(req.body, null, 2));
 
-    // Acknowledge immediately
     res.status(200).json({ ok: true });
 
     const event = req.body?.event;

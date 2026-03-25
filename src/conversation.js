@@ -704,6 +704,7 @@ async function processTurn({ user_id, text, forcedLang }) {
   let storyWindowOpen = Boolean(session.story_window_open);
   let botTurnsAfterStory = Number(session.bot_turns_after_story || 0);
 
+  // Start a fresh story window when a new full story arrives.
   if (isLikelyFullStory(msg)) {
     storyWindowOpen = true;
     botTurnsAfterStory = 0;
@@ -720,14 +721,9 @@ async function processTurn({ user_id, text, forcedLang }) {
   const withUserTurn = appendTurn(session.story_text, "User", msg);
   const updatedCount = Number(session.msg_count || 0) + 1;
 
-  // Close automatically after 3 bot prompts inside an active story window.
-  // This no longer depends on the user sending a short "ok/ha/emoji" message.
-  // Flow becomes:
-  // user story -> bot 1 -> user -> bot 2 -> user -> bot 3 -> user -> closure + emoji + link
-  if (
-    storyWindowOpen &&
-    (botTurnsAfterStory >= 3 || (isClosureSignal(msg) && botTurnsAfterStory >= 2))
-  ) {
+  // If we are already in a story window and the user now gives a short closure signal,
+  // send a closing line, then emoji, then link as separate messages.
+  if (storyWindowOpen && isClosureSignal(msg) && botTurnsAfterStory >= 2) {
     const userOnlyStory = extractUserOnlyStory(withUserTurn);
     const storyUrl = await maybeSaveStoryAndBuildLink({
       user_id,

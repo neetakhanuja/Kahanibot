@@ -81,6 +81,12 @@ function isClosureSignal(text) {
     "🙏",
     "🙂",
     "😊",
+    "that's all",
+    "that is all",
+    "just that",
+    "बस",
+    "बस इतना ही",
+    "यही याद है",
     "हाँ",
     "हां",
     "ठीक",
@@ -91,12 +97,26 @@ function isClosureSignal(text) {
     "હા",
     "આભાર",
     "સાચી વાત",
+    "બસ",
+    "બસ એટલું જ",
+    "હવે એટલું જ",
   ];
 
   if (exact.includes(t)) return true;
   if (wordCount(t) <= 2) return true;
 
-  return false;
+  const patterns = [
+    /\bthat's all\b/i,
+    /\bthat is all\b/i,
+    /\bjust that\b/i,
+    /\bbas itna hi\b/i,
+    /\bबस इतना ही\b/i,
+    /\bयही याद है\b/i,
+    /\bબસ એટલું જ\b/i,
+    /\bહવે એટલું જ\b/i,
+  ];
+
+  return patterns.some((rx) => rx.test(t));
 }
 
 function isLikelyFullStory(text) {
@@ -419,6 +439,79 @@ function buildStoryUrl(storyId) {
 
   if (!cleanBase || !cleanId) return "";
   return `${cleanBase}/${encodeURIComponent(cleanId)}`;
+}
+
+function shouldFinalizeOnUserClosure({
+  storyWindowOpen,
+  botTurnsAfterStory,
+  lastBotMode,
+  msg,
+}) {
+  if (!storyWindowOpen) return false;
+
+  const text = String(msg || "").trim();
+  if (!text) return false;
+
+  const closure = isClosureSignal(text);
+  const strongClosure =
+    /\bthat's all\b/i.test(text) ||
+    /\bthat is all\b/i.test(text) ||
+    /\bjust that\b/i.test(text) ||
+    /\bबस इतना ही\b/i.test(text) ||
+    /\bयही याद है\b/i.test(text) ||
+    /\bબસ એટલું જ\b/i.test(text) ||
+    /\bહવે એટલું જ\b/i.test(text);
+
+  if (strongClosure && Number(botTurnsAfterStory || 0) >= 1) return true;
+  if (closure && Number(botTurnsAfterStory || 0) >= 2) return true;
+  if (closure && String(lastBotMode || "") === "GENTLE_CLOSURE") return true;
+
+  return false;
+}
+
+async function finalizeStory({ session, lang, user_id, withUserTurn }) {
+  const cleanedStory = extractUserStoryFromTranscript(withUserTurn);
+  const closureMessage = toneSensitiveClosingText(lang, cleanedStory);
+
+  let saved = null;
+  let linkMessage = "";
+
+  if (cleanedStory) {
+    saved = await saveStory({
+      user_id,
+      story_text: cleanedStory,
+      polished_story_text: cleanedStory,
+      transcript_text: withUserTurn,
+      publish: true,
+      privacy: "share",
+      title: "My stories",
+    });
+
+    const url = buildStoryUrl(saved?.id || "");
+    if (url) {
+      linkMessage = linkMessageText(lang, url);
+    }
+  }
+
+  await upsertSession({
+    ...session,
+    state: "READY",
+    lang,
+    story_id: "",
+    story_text: "",
+    msg_count: Number(session.msg_count || 0) + 1,
+    last_agent_prompt: closureMessage,
+    last_bot_mode: "GENTLE_CLOSURE",
+    question_streak: 0,
+    turns_since_question: Number(session.turns_since_question ?? 99) + 1,
+    story_window_open: false,
+    bot_turns_after_story: 0,
+  });
+
+  return {
+    text: closureMessage,
+    messages: [closureMessage, linkMessage].filter(Boolean),
+  };
 }
 
 async function loadSession(user_id) {
@@ -771,51 +864,33 @@ async function processTurn({ user_id, text, forcedLang }) {
     return toMessageResult([]);
   }
 
-  if (storyWindowOpen && botTurnsAfterStory >= 2) {
-    const withUserTurn = appendTurn(session.story_text, "User", msg);
+  const withUserTurn = appendTurn(session.story_text, "User", msg);
 
-    const cleanedStory = extractUserStoryFromTranscript(withUserTurn);
-    const closureMessage = toneSensitiveClosingText(lang, cleanedStory);
-
-    let saved = null;
-    let linkMessage = "";
-
-    if (cleanedStory) {
-      saved = await saveStory({
-        user_id,
-        story_text: cleanedStory,
-        polished_story_text: cleanedStory,
-        transcript_text: withUserTurn,
-        publish: true,
-        privacy: "share",
-        title: "My stories",
-      });
-
-      const url = buildStoryUrl(saved?.id || "");
-      if (url) {
-        linkMessage = linkMessageText(lang, url);
-      }
-    }
-
-    await upsertSession({
-      ...session,
-      state: "READY",
+  if (
+    shouldFinalizeOnUserClosure({
+      storyWindowOpen,
+      botTurnsAfterStory,
+      lastBotMode: session.last_bot_mode,
+      msg,
+    })
+  ) {
+    return finalizeStory({
+      session,
       lang,
-      story_id: "",
-      story_text: "",
-      msg_count: Number(session.msg_count || 0) + 1,
-      last_agent_prompt: closureMessage,
-      last_bot_mode: "GENTLE_CLOSURE",
-      question_streak: 0,
-      turns_since_question: Number(session.turns_since_question ?? 99) + 1,
-      story_window_open: false,
-      bot_turns_after_story: 0,
+      user_id,
+      withUserTurn,
     });
-
-    return toMessageResult([closureMessage, linkMessage]);
   }
 
-  const withUserTurn = appendTurn(session.story_text, "User", msg);
+  if (storyWindowOpen && botTurnsAfterStory >= 2) {
+    return finalizeStory({
+      session,
+      lang,
+      user_id,
+      withUserTurn,
+    });
+  }
+
   const updatedCount = Number(session.msg_count || 0) + 1;
 
   const aiTurn = await buildListenerReply({

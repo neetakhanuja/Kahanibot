@@ -46,6 +46,10 @@ function storyTextToHtml(text) {
     .join("");
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 async function sendWhatsAppText(to, text) {
   if (!process.env.WASENDER_API_KEY) {
     throw new Error("Missing WASENDER_API_KEY");
@@ -67,10 +71,45 @@ async function sendWhatsAppText(to, text) {
   console.log("Wasender send response:", data);
 
   if (!res.ok) {
-    throw new Error(`Wasender send failed with status ${res.status}`);
+    const retryAfter =
+      Number(data?.retry_after || data?.retryAfter || 0) || null;
+    const err = new Error(`Wasender send failed with status ${res.status}`);
+    err.status = res.status;
+    err.retryAfter = retryAfter;
+    err.responseData = data;
+    throw err;
   }
 
   return data;
+}
+
+async function sendWhatsAppMessagesSequentially(to, messages) {
+  const cleanMessages = (messages || [])
+    .map((x) => String(x || "").trim())
+    .filter(Boolean);
+
+  for (let i = 0; i < cleanMessages.length; i++) {
+    const message = cleanMessages[i];
+
+    if (i > 0) {
+      await sleep(5500);
+    }
+
+    try {
+      await sendWhatsAppText(to, message);
+    } catch (err) {
+      if (err?.status === 429) {
+        const retryMs = Math.max(Number(err.retryAfter || 5) * 1000, 5500);
+        console.warn(
+          `Wasender rate limited on message ${i + 1}. Retrying after ${retryMs}ms`
+        );
+        await sleep(retryMs);
+        await sendWhatsAppText(to, message);
+      } else {
+        throw err;
+      }
+    }
+  }
 }
 
 function extractIncomingMessage(body) {
@@ -455,9 +494,7 @@ app.post("/webhook", async (req, res) => {
 
     if (!messages.length) return;
 
-    for (const message of messages) {
-      await sendWhatsAppText(to, message);
-    }
+    await sendWhatsAppMessagesSequentially(to, messages);
   } catch (err) {
     console.error("Webhook error:", err);
   }

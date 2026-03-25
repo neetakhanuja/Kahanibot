@@ -5,6 +5,7 @@ import path from "path";
 
 import { getSheetsClient, readRange } from "./sheets.js";
 import { generateListenerTurn } from "./ai.js";
+import { saveStory } from "./storyStore.js";
 
 const SHEET_ID = process.env.GOOGLE_SHEET_ID;
 const SESSIONS_TAB = "sessions";
@@ -188,10 +189,95 @@ function stoppedText(lang) {
   return "Okay. Write START anytime if you would like to continue.";
 }
 
-function softClosingText(lang) {
-  if (lang === "hi") return "🙂";
-  if (lang === "gu") return "🙂";
+function heavyToneKeywords() {
+  return [
+    // English
+    "died",
+    "death",
+    "passed away",
+    "funeral",
+    "hospital",
+    "ill",
+    "illness",
+    "sick",
+    "pain",
+    "hurt",
+    "loss",
+    "lost",
+    "alone",
+    "lonely",
+    "cry",
+    "cried",
+    "crying",
+    "sad",
+    "grief",
+    "suffer",
+    "suffering",
+    "hardship",
+    "empty",
+    "accident",
+    // Hindi
+    "मृत्यु",
+    "मर गए",
+    "मर गयी",
+    "मर गया",
+    "गुज़र गए",
+    "गुजर गए",
+    "निधन",
+    "अस्पताल",
+    "बीमार",
+    "बीमारी",
+    "दर्द",
+    "अकेला",
+    "अकेली",
+    "रोया",
+    "रोई",
+    "रोना",
+    "दुख",
+    "दुःख",
+    "कष्ट",
+    "खो दिया",
+    // Gujarati
+    "મૃત્યુ",
+    "મરી ગયા",
+    "મરી ગઈ",
+    "અવસાન",
+    "હોસ્પિટલ",
+    "બીમાર",
+    "બીમારી",
+    "દર્દ",
+    "એકલો",
+    "એકલી",
+    "રડ્યો",
+    "રડી",
+    "રડવું",
+    "દુખ",
+    "એકલતા",
+    "ખોઈ દીધું",
+    "ખોવાઈ",
+  ];
+}
+
+function hasHeavyTone(text) {
+  const t = String(text || "").toLowerCase();
+  if (!t) return false;
+  return heavyToneKeywords().some((kw) => t.includes(String(kw).toLowerCase()));
+}
+
+function toneSensitiveClosingText(lang, storyText) {
+  if (hasHeavyTone(storyText)) {
+    if (lang === "hi") return "यह साझा करने के लिए धन्यवाद।";
+    if (lang === "gu") return "આ વાત શેર કરવા માટે આભાર.";
+    return "Thank you for sharing this.";
+  }
+
   return "🙂";
+}
+
+function linkMessageText(lang, url) {
+  if (lang === "hi") return `आपकी कहानी यहाँ है:\n${url}`;
+  if (lang === "gu") return `તમારી વાર્તા અહીં છે:\n${url}`;
+  return `Here is your story:\n${url}`;
 }
 
 function shouldTreatAsMemory(text) {
@@ -280,6 +366,36 @@ function lastTurns(history, maxLines = 10) {
     .filter(Boolean);
 
   return lines.slice(-maxLines).join("\n");
+}
+
+function extractUserStoryFromTranscript(history) {
+  const lines = String(history || "")
+    .split("\n")
+    .map((x) => x.trim())
+    .filter(Boolean);
+
+  const userParts = [];
+
+  for (const line of lines) {
+    if (line.startsWith("User:")) {
+      const text = line.replace(/^User:\s*/, "").trim();
+      if (text) userParts.push(text);
+    }
+  }
+
+  return userParts.join("\n\n").trim();
+}
+
+function buildStoryUrl(storyId) {
+  const base =
+    process.env.STORY_BASE_URL ||
+    `${String(process.env.PUBLIC_BASE_URL || "").replace(/\/+$/, "")}/story`;
+
+  const cleanBase = String(base || "").replace(/\/+$/, "");
+  const cleanId = String(storyId || "").trim();
+
+  if (!cleanBase || !cleanId) return "";
+  return `${cleanBase}/${encodeURIComponent(cleanId)}`;
 }
 
 async function loadSession(user_id) {
@@ -465,6 +581,17 @@ async function buildListenerReply({
   });
 }
 
+function toMessageResult(messages) {
+  const cleanMessages = (messages || [])
+    .map((x) => String(x || "").trim())
+    .filter(Boolean);
+
+  return {
+    text: cleanMessages[0] || "",
+    messages: cleanMessages,
+  };
+}
+
 async function processTurn({ user_id, text, forcedLang }) {
   const msg = normalizeText(text);
   let session = await loadSession(user_id);
@@ -497,18 +624,21 @@ async function processTurn({ user_id, text, forcedLang }) {
   const lower = msg.toLowerCase();
 
   if (lower === "stop") {
+    const reply = stoppedText(lang);
+
     await upsertSession({
       ...session,
       state: "STOPPED",
       lang,
-      last_agent_prompt: stoppedText(lang),
+      last_agent_prompt: reply,
       last_bot_mode: "GENTLE_CLOSURE",
       question_streak: 0,
       turns_since_question: Number(session.turns_since_question ?? 99) + 1,
       story_window_open: false,
       bot_turns_after_story: 0,
     });
-    return stoppedText(lang);
+
+    return toMessageResult([reply]);
   }
 
   if (lower === "start" || lower === "reset") {
@@ -533,11 +663,11 @@ async function processTurn({ user_id, text, forcedLang }) {
       story_window_open: false,
     });
 
-    return open;
+    return toMessageResult([open]);
   }
 
   if (session.state === "STOPPED") {
-    return "";
+    return toMessageResult([]);
   }
 
   if (!msg || isGreetingOnly(msg)) {
@@ -555,7 +685,7 @@ async function processTurn({ user_id, text, forcedLang }) {
       bot_turns_after_story: 0,
     });
 
-    return open;
+    return toMessageResult([open]);
   }
 
   if (isTopicRequest(msg)) {
@@ -575,7 +705,7 @@ async function processTurn({ user_id, text, forcedLang }) {
       bot_turns_after_story: 0,
     });
 
-    return reply;
+    return toMessageResult([reply]);
   }
 
   if (!shouldTreatAsMemory(msg)) {
@@ -593,7 +723,7 @@ async function processTurn({ user_id, text, forcedLang }) {
       bot_turns_after_story: 0,
     });
 
-    return open;
+    return toMessageResult([open]);
   }
 
   let storyWindowOpen = Boolean(session.story_window_open);
@@ -613,21 +743,45 @@ async function processTurn({ user_id, text, forcedLang }) {
       bot_turns_after_story: 0,
       turns_since_question: Number(session.turns_since_question ?? 99) + 1,
     });
-    return "";
+    return toMessageResult([]);
   }
 
   if (storyWindowOpen && botTurnsAfterStory >= 2) {
-    const reply = softClosingText(lang);
     const withUserTurn = appendTurn(session.story_text, "User", msg);
-    const withBotTurn = appendTurn(withUserTurn, "Bot", reply);
+
+    const cleanedStory = extractUserStoryFromTranscript(withUserTurn);
+    const closureMessage = toneSensitiveClosingText(lang, cleanedStory);
+
+    let saved = null;
+    let linkMessage = "";
+
+    if (cleanedStory) {
+      saved = await saveStory({
+        user_id,
+        story_text: cleanedStory,
+        polished_story_text: cleanedStory,
+        transcript_text: withUserTurn,
+        publish: true,
+        privacy: "share",
+        title: "",
+      });
+
+      const url = buildStoryUrl(saved?.id || "");
+      if (url) {
+        linkMessage = linkMessageText(lang, url);
+      }
+    }
+
+    const withBotTurn = appendTurn(withUserTurn, "Bot", closureMessage);
 
     await upsertSession({
       ...session,
       state: "READY",
       lang,
+      story_id: saved?.id || session.story_id || "",
       story_text: withBotTurn,
       msg_count: Number(session.msg_count || 0) + 1,
-      last_agent_prompt: reply,
+      last_agent_prompt: closureMessage,
       last_bot_mode: "GENTLE_CLOSURE",
       question_streak: 0,
       turns_since_question: Number(session.turns_since_question ?? 99) + 1,
@@ -635,7 +789,7 @@ async function processTurn({ user_id, text, forcedLang }) {
       bot_turns_after_story: 0,
     });
 
-    return reply;
+    return toMessageResult([closureMessage, linkMessage]);
   }
 
   const withUserTurn = appendTurn(session.story_text, "User", msg);
@@ -678,7 +832,7 @@ async function processTurn({ user_id, text, forcedLang }) {
     story_window_open: nextStoryWindowOpen,
   });
 
-  return replyText;
+  return toMessageResult([replyText]);
 }
 
 export async function handleMessage({ from, text }) {
@@ -691,7 +845,7 @@ export async function handleMessage({ from, text }) {
 }
 
 export async function handleAppTurn({ user_id, text, lang }) {
-  const reply = await processTurn({
+  const result = await processTurn({
     user_id: String(user_id || ""),
     text: String(text || ""),
     forcedLang: lang || null,
@@ -702,7 +856,8 @@ export async function handleAppTurn({ user_id, text, lang }) {
   return {
     screen: "BUILD",
     story_so_far: session?.story_text || "",
-    agent_prompt: reply,
+    agent_prompt: result?.text || "",
+    extra_messages: result?.messages?.slice(1) || [],
     seed_prompt: session?.seed_prompt || "",
   };
 }

@@ -218,3 +218,51 @@ export async function getStoriesByUser({ user_id, onlyPublic = false }) {
 
   return stories;
 }
+
+export async function getStoryById({ id, onlyPublic = false }) {
+  const { rows } = await getSheetRows();
+
+  if (!rows.length) return null;
+
+  const headers = rows[0];
+  const data = rows.slice(1);
+  const idIndex = findHeaderIndex(headers, "id");
+
+  if (idIndex === -1) return null;
+
+  for (const row of data) {
+    const rowId = String(row[idIndex] || "").trim();
+    if (rowId !== String(id || "").trim()) continue;
+
+    const publishValue = pickFirst(row, headers, ["publish"]);
+    const privacyValue = String(pickFirst(row, headers, ["privacy"])).trim().toLowerCase();
+    const publish =
+      publishValue !== ""
+        ? toBool(publishValue)
+        : privacyValue === "share" || privacyValue === "public";
+
+    if (onlyPublic && publish !== true) {
+      return null;
+    }
+
+    const polished = pickFirst(row, headers, ["polished_story_text"]);
+    const storyText = pickFirst(row, headers, ["story_text"]);
+    const transcript = pickFirst(row, headers, ["transcript_text"]);
+
+    return {
+      id: pickFirst(row, headers, ["id"]),
+      user_id: pickFirst(row, headers, ["user_id"]),
+      title: pickFirst(row, headers, ["title"]),
+      story_text: polished || storyText || transcript || "",
+      transcript_text: transcript || storyText || "",
+      polished_story_text: polished || storyText || "",
+      publish,
+      privacy: privacyValue || (publish ? "share" : "private"),
+      audio_url: pickFirst(row, headers, ["audio_url"]),
+      created_at: pickFirst(row, headers, ["created_at"]),
+      updated_at: pickFirst(row, headers, ["updated_at"]),
+    };
+  }
+
+  return null;
+}

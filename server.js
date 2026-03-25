@@ -278,11 +278,11 @@ app.get("/u/:userId", async (req, res) => {
         <head>
           <meta charset="utf-8" />
           <meta name="viewport" content="width=device-width, initial-scale=1" />
-          <title>Stories by ${escapeHtml(userId)}</title>
+          <title>My Stories</title>
         </head>
         <body style="font-family:system-ui,Arial; background:#fafafa; color:#111;">
           <div style="max-width:780px; margin:40px auto; padding:0 16px;">
-            <h1 style="margin:0 0 8px 0;">Stories by ${escapeHtml(userId)}</h1>
+            <h1 style="margin:0 0 8px 0;">My Stories</h1>
             <div style="color:#444; margin-bottom:20px;">
               Showing public stories only.
             </div>
@@ -320,10 +320,11 @@ app.get("/story/:id", async (req, res) => {
         <head>
           <meta charset="utf-8" />
           <meta name="viewport" content="width=device-width, initial-scale=1" />
-          <title>${title || "Story"}</title>
+          <title>My Stories</title>
         </head>
         <body style="font-family:system-ui,Arial; background:#fafafa; color:#111;">
           <div style="max-width:760px; margin:40px auto; padding:0 16px;">
+            <h1 style="margin:0 0 16px 0; color:#111;">My Stories</h1>
             <article style="
               background:#fff;
               border:1px solid #e6e6e6;
@@ -336,7 +337,7 @@ app.get("/story/:id", async (req, res) => {
               </div>
               ${
                 title
-                  ? `<h1 style="font-size:24px; margin:0 0 16px 0; color:#111;">${title}</h1>`
+                  ? `<h2 style="font-size:24px; margin:0 0 16px 0; color:#111;">${title}</h2>`
                   : ""
               }
               <div style="font-size:18px; line-height:1.8; color:#111;">

@@ -301,10 +301,34 @@ function extractUserOnlyStory(history) {
     .map((x) => x.trim())
     .filter(Boolean);
 
+  const filler = new Set([
+    "હા",
+    "હું",
+    "બરાબર",
+    "સારું",
+    "સાચી વાત",
+    "સાચી વાત છે",
+    "ok",
+    "okay",
+    "yes",
+    "hmm",
+    "hm",
+  ]);
+
   const userLines = lines
     .filter((line) => line.startsWith("User:"))
     .map((line) => line.replace(/^User:\s*/, "").trim())
-    .filter(Boolean);
+    .filter((text) => {
+      if (!text) return false;
+
+      const normalized = text.toLowerCase().replace(/[.!?]/g, "").trim();
+
+      if (filler.has(normalized)) return false;
+
+      if (normalized.length < 4) return false;
+
+      return true;
+    });
 
   return userLines.join("\n\n").trim();
 }

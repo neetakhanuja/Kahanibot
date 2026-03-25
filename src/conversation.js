@@ -42,6 +42,14 @@ function isEmojiOnly(text) {
   return stripped.length === 0;
 }
 
+function normalizeForCompare(text) {
+  return String(text || "")
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s]/gu, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function isClosureSignal(text) {
   const t = String(text || "").trim().toLowerCase();
 
@@ -191,7 +199,6 @@ function stoppedText(lang) {
 
 function heavyToneKeywords() {
   return [
-    // English
     "died",
     "death",
     "passed away",
@@ -216,7 +223,23 @@ function heavyToneKeywords() {
     "hardship",
     "empty",
     "accident",
-    // Hindi
+    "મૃત્યુ",
+    "મરી ગયા",
+    "મરી ગઈ",
+    "અવસાન",
+    "હોસ્પિટલ",
+    "બીમાર",
+    "બીમારી",
+    "દર્દ",
+    "એકલો",
+    "એકલી",
+    "રડ્યો",
+    "રડી",
+    "રડવું",
+    "દુખ",
+    "એકલતા",
+    "ખોઈ દીધું",
+    "ખોવાઈ",
     "मृत्यु",
     "मर गए",
     "मर गयी",
@@ -237,24 +260,6 @@ function heavyToneKeywords() {
     "दुःख",
     "कष्ट",
     "खो दिया",
-    // Gujarati
-    "મૃત્યુ",
-    "મરી ગયા",
-    "મરી ગઈ",
-    "અવસાન",
-    "હોસ્પિટલ",
-    "બીમાર",
-    "બીમારી",
-    "દર્દ",
-    "એકલો",
-    "એકલી",
-    "રડ્યો",
-    "રડી",
-    "રડવું",
-    "દુખ",
-    "એકલતા",
-    "ખોઈ દીધું",
-    "ખોવાઈ",
   ];
 }
 
@@ -368,6 +373,15 @@ function lastTurns(history, maxLines = 10) {
   return lines.slice(-maxLines).join("\n");
 }
 
+function isMeaningfulStoryLine(text) {
+  const t = String(text || "").trim();
+  if (!t) return false;
+  if (isClosureSignal(t)) return false;
+  if (isEmojiOnly(t)) return false;
+  if (wordCount(t) <= 2) return false;
+  return true;
+}
+
 function extractUserStoryFromTranscript(history) {
   const lines = String(history || "")
     .split("\n")
@@ -375,12 +389,21 @@ function extractUserStoryFromTranscript(history) {
     .filter(Boolean);
 
   const userParts = [];
+  const seenNormalized = new Set();
 
   for (const line of lines) {
-    if (line.startsWith("User:")) {
-      const text = line.replace(/^User:\s*/, "").trim();
-      if (text) userParts.push(text);
-    }
+    if (!line.startsWith("User:")) continue;
+
+    const text = line.replace(/^User:\s*/, "").trim();
+    if (!isMeaningfulStoryLine(text)) continue;
+
+    const normalized = normalizeForCompare(text);
+    if (!normalized) continue;
+
+    if (seenNormalized.has(normalized)) continue;
+
+    seenNormalized.add(normalized);
+    userParts.push(text);
   }
 
   return userParts.join("\n\n").trim();
@@ -739,6 +762,8 @@ async function processTurn({ user_id, text, forcedLang }) {
       ...session,
       state: "READY",
       lang,
+      story_text: "",
+      story_id: "",
       story_window_open: false,
       bot_turns_after_story: 0,
       turns_since_question: Number(session.turns_since_question ?? 99) + 1,
@@ -763,7 +788,7 @@ async function processTurn({ user_id, text, forcedLang }) {
         transcript_text: withUserTurn,
         publish: true,
         privacy: "share",
-        title: "",
+        title: "My stories",
       });
 
       const url = buildStoryUrl(saved?.id || "");
@@ -772,14 +797,12 @@ async function processTurn({ user_id, text, forcedLang }) {
       }
     }
 
-    const withBotTurn = appendTurn(withUserTurn, "Bot", closureMessage);
-
     await upsertSession({
       ...session,
       state: "READY",
       lang,
-      story_id: saved?.id || session.story_id || "",
-      story_text: withBotTurn,
+      story_id: "",
+      story_text: "",
       msg_count: Number(session.msg_count || 0) + 1,
       last_agent_prompt: closureMessage,
       last_bot_mode: "GENTLE_CLOSURE",

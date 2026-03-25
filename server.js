@@ -19,15 +19,6 @@ function escapeHtml(s) {
     .replaceAll("'", "&#039;");
 }
 
-function formatDate(iso) {
-  try {
-    const d = new Date(iso);
-    return d.toLocaleString();
-  } catch {
-    return iso || "";
-  }
-}
-
 function storyTextToHtml(text) {
   const paragraphs = String(text || "")
     .split(/\n{2,}/)
@@ -39,7 +30,7 @@ function storyTextToHtml(text) {
   return paragraphs
     .map(
       (p) =>
-        `<p style="font-size:18px; line-height:1.8; color:#111; margin:0 0 18px 0;">${escapeHtml(
+        `<p style="font-size:22px; line-height:1.95; color:#222; margin:0 0 22px 0;">${escapeHtml(
           p
         ).replaceAll("\n", "<br/>")}</p>`
     )
@@ -278,10 +269,7 @@ app.get("/story/:id", async (req, res) => {
       return res.status(404).send("Story not found.");
     }
 
-    const date = escapeHtml(formatDate(story.created_at));
-    const title = escapeHtml(story.title || "");
     const bodyHtml = storyTextToHtml(story.story_text || "");
-    const audioUrl = String(story.audio_url || "").trim();
 
     const html = `
       <!doctype html>
@@ -289,37 +277,54 @@ app.get("/story/:id", async (req, res) => {
         <head>
           <meta charset="utf-8" />
           <meta name="viewport" content="width=device-width, initial-scale=1" />
-          <title>${title || "Story"}</title>
+          <title>My stories</title>
         </head>
-        <body style="font-family:system-ui,Arial; background:#fafafa; color:#111;">
-          <div style="max-width:780px; margin:40px auto; padding:0 16px;">
-            <article style="
-              background:#fff;
-              border:1px solid #e6e6e6;
-              border-radius:12px;
-              padding:24px;
-              box-shadow:0 1px 2px rgba(0,0,0,0.04);
+        <body style="
+          margin:0;
+          font-family: Georgia, 'Times New Roman', serif;
+          background:#f6f1e8;
+          color:#1f1f1f;
+        ">
+          <div style="
+            max-width:900px;
+            margin:0 auto;
+            padding:48px 20px 72px;
+          ">
+            <div style="
+              text-align:center;
+              margin-bottom:36px;
             ">
-              <div style="color:#666; font-size:13px; margin-bottom:12px;">
-                ${date}
+              <h1 style="
+                margin:0 0 10px 0;
+                font-size:40px;
+                font-weight:600;
+                letter-spacing:0.2px;
+                color:#1f1f1f;
+              ">
+                My stories
+              </h1>
+              <div style="
+                font-size:18px;
+                line-height:1.7;
+                color:#6b6258;
+              ">
+                A remembered moment, in the storyteller's own words
               </div>
-              ${
-                title
-                  ? `<h1 style="font-size:28px; margin:0 0 18px 0; color:#111;">${title}</h1>`
-                  : ""
-              }
-              <div>
+            </div>
+
+            <article style="
+              background:#fffdf8;
+              border:1px solid #e6ddd0;
+              border-radius:22px;
+              padding:34px 28px;
+              box-shadow:0 8px 30px rgba(72, 55, 32, 0.06);
+            ">
+              <div style="
+                max-width:720px;
+                margin:0 auto;
+              ">
                 ${bodyHtml}
               </div>
-              ${
-                audioUrl
-                  ? `<div style="margin-top:18px;">
-                      <audio controls preload="none" style="width:100%;">
-                        <source src="${escapeHtml(audioUrl)}" />
-                      </audio>
-                     </div>`
-                  : ""
-              }
             </article>
           </div>
         </body>
@@ -356,44 +361,26 @@ app.get("/u/:userId", async (req, res) => {
 
     const itemsHtml = sorted
       .map((s) => {
-        const date = escapeHtml(formatDate(s.created_at));
-        const title = escapeHtml(s.title || "");
         const textHtml = storyTextToHtml(s.story_text || "");
-        const audioUrl = String(s.audio_url || "").trim();
         const storyLink = `/story/${encodeURIComponent(String(s.id || "").trim())}`;
 
         return `
           <article style="
-            background:#fff;
-            border:1px solid #e6e6e6;
-            border-radius:12px;
-            padding:16px;
-            margin:16px 0;
-            box-shadow:0 1px 2px rgba(0,0,0,0.04);
+            background:#fffdf8;
+            border:1px solid #e6ddd0;
+            border-radius:18px;
+            padding:22px;
+            margin:18px 0;
+            box-shadow:0 6px 20px rgba(72, 55, 32, 0.05);
           ">
-            <div style="color:#666; font-size:13px; margin-bottom:10px;">
-              ${date}
-            </div>
-            ${
-              title
-                ? `<h2 style="font-size:18px; margin:0 0 10px 0; color:#111;">${title}</h2>`
-                : ""
-            }
             <div>
               ${textHtml}
             </div>
-            <div style="margin-top:12px;">
-              <a href="${escapeHtml(storyLink)}" style="color:#0b57d0; text-decoration:none;">Open story</a>
+            <div style="margin-top:14px;">
+              <a href="${escapeHtml(storyLink)}" style="color:#7a4f22; text-decoration:none; font-size:16px;">
+                Open story
+              </a>
             </div>
-            ${
-              audioUrl
-                ? `<div style="margin-top:14px;">
-                    <audio controls preload="none" style="width:100%;">
-                      <source src="${escapeHtml(audioUrl)}" />
-                    </audio>
-                   </div>`
-                : ""
-            }
           </article>
         `;
       })
@@ -405,13 +392,35 @@ app.get("/u/:userId", async (req, res) => {
         <head>
           <meta charset="utf-8" />
           <meta name="viewport" content="width=device-width, initial-scale=1" />
-          <title>Stories by ${escapeHtml(userId)}</title>
+          <title>My stories</title>
         </head>
-        <body style="font-family:system-ui,Arial; background:#fafafa; color:#111;">
-          <div style="max-width:780px; margin:40px auto; padding:0 16px;">
-            <h1 style="margin:0 0 8px 0;">Stories by ${escapeHtml(userId)}</h1>
-            <div style="color:#444; margin-bottom:20px;">
-              Showing public stories only.
+        <body style="
+          margin:0;
+          font-family: Georgia, 'Times New Roman', serif;
+          background:#f6f1e8;
+          color:#1f1f1f;
+        ">
+          <div style="
+            max-width:900px;
+            margin:0 auto;
+            padding:48px 20px 72px;
+          ">
+            <div style="text-align:center; margin-bottom:30px;">
+              <h1 style="
+                margin:0 0 10px 0;
+                font-size:40px;
+                font-weight:600;
+                color:#1f1f1f;
+              ">
+                My stories
+              </h1>
+              <div style="
+                font-size:18px;
+                line-height:1.7;
+                color:#6b6258;
+              ">
+                Memories shared in the storyteller's own words
+              </div>
             </div>
             ${itemsHtml}
           </div>
@@ -433,7 +442,6 @@ app.post("/webhook", async (req, res) => {
     console.log("Webhook received:");
     console.log(JSON.stringify(req.body, null, 2));
 
-    // Acknowledge immediately
     res.status(200).json({ ok: true });
 
     const event = req.body?.event;

@@ -109,7 +109,6 @@ function isClosureSignal(text) {
     /\bthat's all\b/i,
     /\bthat is all\b/i,
     /\bjust that\b/i,
-    /\bbas itna hi\b/i,
     /\bबस इतना ही\b/i,
     /\bयही याद है\b/i,
     /\bબસ એટલું જ\b/i,
@@ -324,9 +323,9 @@ function toneSensitiveClosingText(lang, storyText) {
 }
 
 function linkMessageText(lang, url) {
-  if (lang === "hi") return `आपकी कहानी यहाँ है:\n${url}`;
-  if (lang === "gu") return `તમારી વાર્તા અહીં છે:\n${url}`;
-  return `Here is your story:\n${url}`;
+  if (lang === "hi") return `आपकी कहानियाँ यहाँ हैं:\n${url}`;
+  if (lang === "gu") return `તમારી વાર્તાઓ અહીં છે:\n${url}`;
+  return `Your stories are here:\n${url}`;
 }
 
 function shouldTreatAsMemory(text) {
@@ -470,16 +469,18 @@ function hasEnoughStoryContent(history) {
   return false;
 }
 
-function buildStoryUrl(storyId) {
-  const base =
-    process.env.STORY_BASE_URL ||
-    `${String(process.env.PUBLIC_BASE_URL || "").replace(/\/+$/, "")}/story`;
+function buildArchiveUrl(userId) {
+  const publicBase = String(process.env.PUBLIC_BASE_URL || "").replace(/\/+$/, "");
+  if (publicBase) {
+    return `${publicBase}/u/${encodeURIComponent(String(userId || "").trim())}`;
+  }
 
-  const cleanBase = String(base || "").replace(/\/+$/, "");
-  const cleanId = String(storyId || "").trim();
+  const storyBase = String(process.env.STORY_BASE_URL || "").replace(/\/+$/, "");
+  if (!storyBase) return "";
 
-  if (!cleanBase || !cleanId) return "";
-  return `${cleanBase}/${encodeURIComponent(cleanId)}`;
+  // If STORY_BASE_URL is .../story, convert to .../u
+  const archiveBase = storyBase.replace(/\/story$/i, "/u");
+  return `${archiveBase}/${encodeURIComponent(String(userId || "").trim())}`;
 }
 
 function shouldFinalizeOnUserClosure({
@@ -493,7 +494,6 @@ function shouldFinalizeOnUserClosure({
   if (!text) return false;
 
   if (!storyWindowOpen && !enoughStoryContent) return false;
-
   if (isLinkRequest(text) && enoughStoryContent) return true;
 
   const closure = isClosureSignal(text);
@@ -525,11 +525,8 @@ async function finalizeStory({ session, lang, user_id, withUserTurn }) {
   const cleanedStory = extractUserStoryFromTranscript(withUserTurn);
   const closureMessage = toneSensitiveClosingText(lang, cleanedStory);
 
-  let saved = null;
-  let linkMessage = "";
-
   if (cleanedStory) {
-    saved = await saveStory({
+    await saveStory({
       user_id,
       story_text: cleanedStory,
       polished_story_text: cleanedStory,
@@ -538,12 +535,10 @@ async function finalizeStory({ session, lang, user_id, withUserTurn }) {
       privacy: "share",
       title: "My stories",
     });
-
-    const url = buildStoryUrl(saved?.id || "");
-    if (url) {
-      linkMessage = linkMessageText(lang, url);
-    }
   }
+
+  const archiveUrl = buildArchiveUrl(user_id);
+  const linkMessage = archiveUrl ? linkMessageText(lang, archiveUrl) : "";
 
   await upsertSession({
     ...session,
@@ -935,7 +930,6 @@ async function processTurn({ user_id, text, forcedLang }) {
     });
   }
 
-  // Hard cap: after 2 bot replies once story is underway, finalize automatically.
   if (storyWindowOpen && botTurnsAfterStory >= 2) {
     return finalizeStory({
       session,
@@ -958,19 +952,8 @@ async function processTurn({ user_id, text, forcedLang }) {
     turns_since_question: Number(session.turns_since_question ?? 99),
   });
 
-  let replyText = aiTurn?.text || "";
-  let nextMode = aiTurn?.mode || "ACKNOWLEDGMENT";
-
-  // Safety: if this next reply would become the 3rd bot turn after story start, do not continue.
-  if (storyWindowOpen && botTurnsAfterStory >= 1 && enoughStoryContent && isClosureSignal(msg)) {
-    return finalizeStory({
-      session,
-      lang,
-      user_id,
-      withUserTurn,
-    });
-  }
-
+  const replyText = aiTurn?.text || "";
+  const nextMode = aiTurn?.mode || "ACKNOWLEDGMENT";
   const withBotTurn = appendTurn(withUserTurn, "Bot", replyText);
 
   const nextQuestionStreak =

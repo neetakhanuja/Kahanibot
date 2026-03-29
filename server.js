@@ -229,15 +229,12 @@ async function transcribeAudioFromUrl(mediaUrl) {
   }
 }
 
-// Health
 app.get("/health", (req, res) => res.status(200).send("OK"));
 
-// Optional web app route
 app.get("/app", (req, res) => {
   res.sendFile(path.resolve("public", "index.html"));
 });
 
-// Local testing route
 app.post("/api/turn", async (req, res) => {
   try {
     const { user_id, text, lang } = req.body || {};
@@ -259,7 +256,6 @@ app.post("/api/turn", async (req, res) => {
   }
 });
 
-// Single public story page
 app.get("/story/:id", async (req, res) => {
   try {
     const storyId = String(req.params.id || "").trim();
@@ -285,29 +281,12 @@ app.get("/story/:id", async (req, res) => {
           background:#f6f1e8;
           color:#1f1f1f;
         ">
-          <div style="
-            max-width:900px;
-            margin:0 auto;
-            padding:48px 20px 72px;
-          ">
-            <div style="
-              text-align:center;
-              margin-bottom:36px;
-            ">
-              <h1 style="
-                margin:0 0 10px 0;
-                font-size:40px;
-                font-weight:600;
-                letter-spacing:0.2px;
-                color:#1f1f1f;
-              ">
+          <div style="max-width:900px; margin:0 auto; padding:48px 20px 72px;">
+            <div style="text-align:center; margin-bottom:36px;">
+              <h1 style="margin:0 0 10px 0; font-size:40px; font-weight:600; color:#1f1f1f;">
                 My stories
               </h1>
-              <div style="
-                font-size:18px;
-                line-height:1.7;
-                color:#6b6258;
-              ">
+              <div style="font-size:18px; line-height:1.7; color:#6b6258;">
                 A remembered moment, in the storyteller's own words
               </div>
             </div>
@@ -319,10 +298,7 @@ app.get("/story/:id", async (req, res) => {
               padding:34px 28px;
               box-shadow:0 8px 30px rgba(72, 55, 32, 0.06);
             ">
-              <div style="
-                max-width:720px;
-                margin:0 auto;
-              ">
+              <div style="max-width:720px; margin:0 auto;">
                 ${bodyHtml}
               </div>
             </article>
@@ -339,10 +315,9 @@ app.get("/story/:id", async (req, res) => {
   }
 });
 
-// Public stories page by user
 app.get("/u/:userId", async (req, res) => {
   try {
-    const userId = req.params.userId;
+    const userId = String(req.params.userId || "").trim();
 
     const stories = await getStoriesByUser({
       user_id: userId,
@@ -350,7 +325,7 @@ app.get("/u/:userId", async (req, res) => {
     });
 
     if (!stories.length) {
-      return res.status(404).send("No public stories found for this user.");
+      return res.status(404).send("No public stories found.");
     }
 
     const sorted = [...stories].sort((a, b) => {
@@ -360,7 +335,7 @@ app.get("/u/:userId", async (req, res) => {
     });
 
     const itemsHtml = sorted
-      .map((s) => {
+      .map((s, index) => {
         const textHtml = storyTextToHtml(s.story_text || "");
         const storyLink = `/story/${encodeURIComponent(String(s.id || "").trim())}`;
 
@@ -368,16 +343,26 @@ app.get("/u/:userId", async (req, res) => {
           <article style="
             background:#fffdf8;
             border:1px solid #e6ddd0;
-            border-radius:18px;
-            padding:22px;
-            margin:18px 0;
-            box-shadow:0 6px 20px rgba(72, 55, 32, 0.05);
+            border-radius:22px;
+            padding:34px 28px;
+            margin:0 0 24px 0;
+            box-shadow:0 8px 30px rgba(72, 55, 32, 0.06);
           ">
-            <div>
+            <div style="
+              max-width:720px;
+              margin:0 auto 18px auto;
+              font-size:15px;
+              color:#8a7e70;
+            ">
+              Story ${sorted.length - index}
+            </div>
+            <div style="max-width:720px; margin:0 auto;">
               ${textHtml}
             </div>
-            <div style="margin-top:14px;">
-              <a href="${escapeHtml(storyLink)}" style="color:#7a4f22; text-decoration:none; font-size:16px;">
+            <div style="max-width:720px; margin:18px auto 0 auto;">
+              <a href="${escapeHtml(
+                storyLink
+              )}" style="color:#7a4f22; text-decoration:none; font-size:16px;">
                 Open story
               </a>
             </div>
@@ -400,12 +385,8 @@ app.get("/u/:userId", async (req, res) => {
           background:#f6f1e8;
           color:#1f1f1f;
         ">
-          <div style="
-            max-width:900px;
-            margin:0 auto;
-            padding:48px 20px 72px;
-          ">
-            <div style="text-align:center; margin-bottom:30px;">
+          <div style="max-width:980px; margin:0 auto; padding:48px 20px 72px;">
+            <div style="text-align:center; margin-bottom:34px;">
               <h1 style="
                 margin:0 0 10px 0;
                 font-size:40px;
@@ -436,7 +417,6 @@ app.get("/u/:userId", async (req, res) => {
   }
 });
 
-// WhatsApp webhook
 app.post("/webhook", async (req, res) => {
   try {
     console.log("Webhook received:");

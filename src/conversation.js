@@ -119,6 +119,30 @@ function isClosureSignal(text) {
   return patterns.some((rx) => rx.test(t));
 }
 
+function isLinkRequest(text) {
+  const t = String(text || "").trim().toLowerCase();
+  if (!t) return false;
+
+  const phrases = [
+    "send link",
+    "story link",
+    "send the link",
+    "share the link",
+    "link please",
+    "my story link",
+    "link aapo",
+    "link apo",
+    "લિંક આપો",
+    "લિંક મોકલો",
+    "વાર્તાની લિંક",
+    "कहानी का लिंक",
+    "लिंक भेजो",
+    "लिंक भेजिए",
+  ];
+
+  return phrases.some((p) => t.includes(p));
+}
+
 function isLikelyFullStory(text) {
   const t = String(text || "").trim();
   const wc = wordCount(t);
@@ -429,6 +453,23 @@ function extractUserStoryFromTranscript(history) {
   return userParts.join("\n\n").trim();
 }
 
+function hasEnoughStoryContent(history) {
+  const story = extractUserStoryFromTranscript(history);
+  if (!story) return false;
+
+  const parts = story
+    .split(/\n{2,}/)
+    .map((x) => x.trim())
+    .filter(Boolean);
+
+  const totalWords = wordCount(story);
+
+  if (totalWords >= 18) return true;
+  if (parts.length >= 2 && totalWords >= 10) return true;
+
+  return false;
+}
+
 function buildStoryUrl(storyId) {
   const base =
     process.env.STORY_BASE_URL ||
@@ -443,14 +484,17 @@ function buildStoryUrl(storyId) {
 
 function shouldFinalizeOnUserClosure({
   storyWindowOpen,
+  enoughStoryContent,
   botTurnsAfterStory,
   lastBotMode,
   msg,
 }) {
-  if (!storyWindowOpen) return false;
-
   const text = String(msg || "").trim();
   if (!text) return false;
+
+  if (!storyWindowOpen && !enoughStoryContent) return false;
+
+  if (isLinkRequest(text) && enoughStoryContent) return true;
 
   const closure = isClosureSignal(text);
   const strongClosure =
@@ -462,9 +506,17 @@ function shouldFinalizeOnUserClosure({
     /\bબસ એટલું જ\b/i.test(text) ||
     /\bહવે એટલું જ\b/i.test(text);
 
-  if (strongClosure && Number(botTurnsAfterStory || 0) >= 1) return true;
-  if (closure && Number(botTurnsAfterStory || 0) >= 2) return true;
-  if (closure && String(lastBotMode || "") === "GENTLE_CLOSURE") return true;
+  if (strongClosure && Number(botTurnsAfterStory || 0) >= 1 && enoughStoryContent) {
+    return true;
+  }
+
+  if (closure && Number(botTurnsAfterStory || 0) >= 1 && enoughStoryContent) {
+    return true;
+  }
+
+  if (closure && String(lastBotMode || "") === "GENTLE_CLOSURE" && enoughStoryContent) {
+    return true;
+  }
 
   return false;
 }
@@ -845,9 +897,11 @@ async function processTurn({ user_id, text, forcedLang }) {
   let storyWindowOpen = Boolean(session.story_window_open);
   let botTurnsAfterStory = Number(session.bot_turns_after_story || 0);
 
-  if (isLikelyFullStory(msg)) {
+  const withUserTurn = appendTurn(session.story_text, "User", msg);
+  const enoughStoryContent = hasEnoughStoryContent(withUserTurn);
+
+  if (isLikelyFullStory(msg) || enoughStoryContent) {
     storyWindowOpen = true;
-    botTurnsAfterStory = 0;
   }
 
   if (storyWindowOpen && session.last_bot_mode === "GENTLE_CLOSURE" && isClosureSignal(msg)) {
@@ -864,11 +918,10 @@ async function processTurn({ user_id, text, forcedLang }) {
     return toMessageResult([]);
   }
 
-  const withUserTurn = appendTurn(session.story_text, "User", msg);
-
   if (
     shouldFinalizeOnUserClosure({
       storyWindowOpen,
+      enoughStoryContent,
       botTurnsAfterStory,
       lastBotMode: session.last_bot_mode,
       msg,
@@ -882,6 +935,7 @@ async function processTurn({ user_id, text, forcedLang }) {
     });
   }
 
+  // Hard cap: after 2 bot replies once story is underway, finalize automatically.
   if (storyWindowOpen && botTurnsAfterStory >= 2) {
     return finalizeStory({
       session,
@@ -904,8 +958,19 @@ async function processTurn({ user_id, text, forcedLang }) {
     turns_since_question: Number(session.turns_since_question ?? 99),
   });
 
-  const replyText = aiTurn?.text || "";
-  const nextMode = aiTurn?.mode || "ACKNOWLEDGMENT";
+  let replyText = aiTurn?.text || "";
+  let nextMode = aiTurn?.mode || "ACKNOWLEDGMENT";
+
+  // Safety: if this next reply would become the 3rd bot turn after story start, do not continue.
+  if (storyWindowOpen && botTurnsAfterStory >= 1 && enoughStoryContent && isClosureSignal(msg)) {
+    return finalizeStory({
+      session,
+      lang,
+      user_id,
+      withUserTurn,
+    });
+  }
+
   const withBotTurn = appendTurn(withUserTurn, "Bot", replyText);
 
   const nextQuestionStreak =

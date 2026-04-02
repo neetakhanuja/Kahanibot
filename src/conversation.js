@@ -50,6 +50,45 @@ function normalizeForCompare(text) {
     .trim();
 }
 
+function explicitLanguageChoice(text) {
+  const t = String(text || "").trim().toLowerCase();
+
+  if (
+    t === "gujarati" ||
+    t === "gu" ||
+    t === "language: gujarati" ||
+    t === "language gujarati" ||
+    t.includes("speak gujarati") ||
+    t.includes("in gujarati")
+  ) {
+    return "gu";
+  }
+
+  if (
+    t === "hindi" ||
+    t === "hi" ||
+    t === "language: hindi" ||
+    t === "language hindi" ||
+    t.includes("speak hindi") ||
+    t.includes("in hindi")
+  ) {
+    return "hi";
+  }
+
+  if (
+    t === "english" ||
+    t === "en" ||
+    t === "language: english" ||
+    t === "language english" ||
+    t.includes("speak english") ||
+    t.includes("in english")
+  ) {
+    return "en";
+  }
+
+  return null;
+}
+
 function isClosureSignal(text) {
   const t = String(text || "").trim().toLowerCase();
 
@@ -100,6 +139,8 @@ function isClosureSignal(text) {
     "બસ",
     "બસ એટલું જ",
     "હવે એટલું જ",
+    "story end",
+    "the end",
   ];
 
   if (exact.includes(t)) return true;
@@ -113,6 +154,7 @@ function isClosureSignal(text) {
     /\bयही याद है\b/i,
     /\bબસ એટલું જ\b/i,
     /\bહવે એટલું જ\b/i,
+    /\bstory end\b/i,
   ];
 
   return patterns.some((rx) => rx.test(t));
@@ -147,10 +189,10 @@ function isLikelyFullStory(text) {
   const wc = wordCount(t);
 
   if (!t) return false;
-  if (wc >= 30) return true;
-  if (wc >= 22 && /[,.!?।]/.test(t)) return true;
+  if (wc >= 25) return true;
+  if (wc >= 18 && /[,.!?।]/.test(t)) return true;
   if (
-    wc >= 20 &&
+    wc >= 16 &&
     /\b(when|while|after|before|then|used to|remember|once|during|school|childhood|festival|grandmother|grandfather|mother|father)\b/i.test(
       t
     )
@@ -159,40 +201,6 @@ function isLikelyFullStory(text) {
   }
 
   return false;
-}
-
-function detectLangFromText(text, fallback = "en") {
-  const t = String(text || "").trim();
-
-  if (!t) return fallback;
-  if (/[\u0A80-\u0AFF]/.test(t)) return "gu";
-  if (/[\u0900-\u097F]/.test(t)) return "hi";
-
-  const lower = t.toLowerCase();
-
-  if (
-    lower.includes("in hindi") ||
-    lower.includes("speak hindi") ||
-    lower === "hindi" ||
-    lower === "hi"
-  ) {
-    return "hi";
-  }
-
-  if (
-    lower.includes("in gujarati") ||
-    lower.includes("speak gujarati") ||
-    lower === "gujarati" ||
-    lower === "gu"
-  ) {
-    return "gu";
-  }
-
-  if (lower.includes("in english") || lower === "english" || lower === "en") {
-    return "en";
-  }
-
-  return fallback;
 }
 
 function isGreetingOnly(text) {
@@ -215,7 +223,7 @@ function openingText(lang) {
     return (
       "नमस्ते.\n" +
       "मैं आपकी बात सुनने के लिए यहाँ हूँ.\n" +
-      "अगर आज के कार्ड या किसी याद से कुछ मन में आया हो, तो आप मुझे बता सकते हैं."
+      "अगर आप चाहें, तो अपनी कोई याद मुझसे साझा कर सकते हैं."
     );
   }
 
@@ -223,14 +231,14 @@ function openingText(lang) {
     return (
       "નમસ્તે.\n" +
       "હું તમારી વાત સાંભળવા માટે અહીં છું.\n" +
-      "જો આજના કાર્ડ અથવા કોઈ યાદથી કંઈ મનમાં આવ્યું હોય, તો તમે મને કહી શકો."
+      "જો તમે ઇચ્છો, તો તમારી કોઈ યાદ મારી સાથે શેર કરી શકો."
     );
   }
 
   return (
     "Hello.\n" +
     "I'm here to listen.\n" +
-    "If today's card or a memory brought something to mind, you can tell me."
+    "If you would like, you can share a memory with me."
   );
 }
 
@@ -240,86 +248,10 @@ function stoppedText(lang) {
   return "Okay. Write START anytime if you would like to continue.";
 }
 
-function heavyToneKeywords() {
-  return [
-    "died",
-    "death",
-    "passed away",
-    "funeral",
-    "hospital",
-    "ill",
-    "illness",
-    "sick",
-    "pain",
-    "hurt",
-    "loss",
-    "lost",
-    "alone",
-    "lonely",
-    "cry",
-    "cried",
-    "crying",
-    "sad",
-    "grief",
-    "suffer",
-    "suffering",
-    "hardship",
-    "empty",
-    "accident",
-    "મૃત્યુ",
-    "મરી ગયા",
-    "મરી ગઈ",
-    "અવસાન",
-    "હોસ્પિટલ",
-    "બીમાર",
-    "બીમારી",
-    "દર્દ",
-    "એકલો",
-    "એકલી",
-    "રડ્યો",
-    "રડી",
-    "રડવું",
-    "દુખ",
-    "એકલતા",
-    "ખોઈ દીધું",
-    "ખોવાઈ",
-    "मृत्यु",
-    "मर गए",
-    "मर गयी",
-    "मर गया",
-    "गुज़र गए",
-    "गुजर गए",
-    "निधन",
-    "अस्पताल",
-    "बीमार",
-    "बीमारी",
-    "दर्द",
-    "अकेला",
-    "अकेली",
-    "रोया",
-    "रोई",
-    "रोना",
-    "दुख",
-    "दुःख",
-    "कष्ट",
-    "खो दिया",
-  ];
-}
-
-function hasHeavyTone(text) {
-  const t = String(text || "").toLowerCase();
-  if (!t) return false;
-  return heavyToneKeywords().some((kw) => t.includes(String(kw).toLowerCase()));
-}
-
-function toneSensitiveClosingText(lang, storyText) {
-  if (hasHeavyTone(storyText)) {
-    if (lang === "hi") return "यह साझा करने के लिए धन्यवाद।";
-    if (lang === "gu") return "આ વાત શેર કરવા માટે આભાર.";
-    return "Thank you for sharing this.";
-  }
-
-  return "🙂";
+function finalClosingText(lang) {
+  if (lang === "hi") return "अपनी कहानी साझा करने के लिए धन्यवाद।";
+  if (lang === "gu") return "તમારી વાર્તા શેર કરવા બદલ આભાર.";
+  return "Thank you for sharing your story.";
 }
 
 function linkMessageText(lang, url) {
@@ -332,6 +264,7 @@ function shouldTreatAsMemory(text) {
   const t = String(text || "").trim();
   if (!t) return false;
   if (isGreetingOnly(t)) return false;
+  if (explicitLanguageChoice(t)) return false;
   return true;
 }
 
@@ -442,7 +375,6 @@ function extractUserStoryFromTranscript(history) {
 
     const normalized = normalizeForCompare(text);
     if (!normalized) continue;
-
     if (seenNormalized.has(normalized)) continue;
 
     seenNormalized.add(normalized);
@@ -478,52 +410,13 @@ function buildArchiveUrl(userId) {
   const storyBase = String(process.env.STORY_BASE_URL || "").replace(/\/+$/, "");
   if (!storyBase) return "";
 
-  // If STORY_BASE_URL is .../story, convert to .../u
   const archiveBase = storyBase.replace(/\/story$/i, "/u");
   return `${archiveBase}/${encodeURIComponent(String(userId || "").trim())}`;
 }
 
-function shouldFinalizeOnUserClosure({
-  storyWindowOpen,
-  enoughStoryContent,
-  botTurnsAfterStory,
-  lastBotMode,
-  msg,
-}) {
-  const text = String(msg || "").trim();
-  if (!text) return false;
-
-  if (!storyWindowOpen && !enoughStoryContent) return false;
-  if (isLinkRequest(text) && enoughStoryContent) return true;
-
-  const closure = isClosureSignal(text);
-  const strongClosure =
-    /\bthat's all\b/i.test(text) ||
-    /\bthat is all\b/i.test(text) ||
-    /\bjust that\b/i.test(text) ||
-    /\bबस इतना ही\b/i.test(text) ||
-    /\bयही याद है\b/i.test(text) ||
-    /\bબસ એટલું જ\b/i.test(text) ||
-    /\bહવે એટલું જ\b/i.test(text);
-
-  if (strongClosure && Number(botTurnsAfterStory || 0) >= 1 && enoughStoryContent) {
-    return true;
-  }
-
-  if (closure && Number(botTurnsAfterStory || 0) >= 1 && enoughStoryContent) {
-    return true;
-  }
-
-  if (closure && String(lastBotMode || "") === "GENTLE_CLOSURE" && enoughStoryContent) {
-    return true;
-  }
-
-  return false;
-}
-
 async function finalizeStory({ session, lang, user_id, withUserTurn }) {
   const cleanedStory = extractUserStoryFromTranscript(withUserTurn);
-  const closureMessage = toneSensitiveClosingText(lang, cleanedStory);
+  const closureMessage = finalClosingText(lang);
 
   if (cleanedStory) {
     await saveStory({
@@ -551,13 +444,24 @@ async function finalizeStory({ session, lang, user_id, withUserTurn }) {
     last_bot_mode: "GENTLE_CLOSURE",
     question_streak: 0,
     turns_since_question: Number(session.turns_since_question ?? 99) + 1,
-    story_window_open: false,
     bot_turns_after_story: 0,
+    story_window_open: false,
   });
 
   return {
     text: closureMessage,
     messages: [closureMessage, linkMessage].filter(Boolean),
+  };
+}
+
+function toMessageResult(messages) {
+  const cleanMessages = (messages || [])
+    .map((x) => String(x || "").trim())
+    .filter(Boolean);
+
+  return {
+    text: cleanMessages[0] || "",
+    messages: cleanMessages,
   };
 }
 
@@ -580,7 +484,6 @@ async function loadSession(user_id) {
   const idxMsgCount = headerIndex(headers, "msg_count");
   const idxSeed = headerIndex(headers, "seed_prompt");
   const idxLastPrompt = headerIndex(headers, "last_agent_prompt");
-  const idxLastQType = headerIndex(headers, "last_question_type");
   const idxLastBotMode = headerIndex(headers, "last_bot_mode");
   const idxQuestionStreak = headerIndex(headers, "question_streak");
   const idxTurnsSinceQuestion = headerIndex(headers, "turns_since_question");
@@ -602,7 +505,6 @@ async function loadSession(user_id) {
         msg_count: Number(row[idxMsgCount] || 0),
         seed_prompt: idxSeed === -1 ? "" : row[idxSeed] || "",
         last_agent_prompt: idxLastPrompt === -1 ? "" : row[idxLastPrompt] || "",
-        last_question_type: idxLastQType === -1 ? "none" : row[idxLastQType] || "none",
         last_bot_mode: idxLastBotMode === -1 ? "none" : row[idxLastBotMode] || "none",
         question_streak: idxQuestionStreak === -1 ? 0 : Number(row[idxQuestionStreak] || 0),
         turns_since_question:
@@ -645,7 +547,6 @@ async function upsertSession(session) {
 
   const idxSeed = headerIndex(headers, "seed_prompt");
   const idxLastPrompt = headerIndex(headers, "last_agent_prompt");
-  const idxLastQType = headerIndex(headers, "last_question_type");
   const idxLastBotMode = headerIndex(headers, "last_bot_mode");
   const idxQuestionStreak = headerIndex(headers, "question_streak");
   const idxTurnsSinceQuestion = headerIndex(headers, "turns_since_question");
@@ -677,7 +578,6 @@ async function upsertSession(session) {
 
   if (idxSeed !== -1) outRow[idxSeed] = session.seed_prompt || "";
   if (idxLastPrompt !== -1) outRow[idxLastPrompt] = session.last_agent_prompt || "";
-  if (idxLastQType !== -1) outRow[idxLastQType] = session.last_question_type || "none";
   if (idxLastBotMode !== -1) outRow[idxLastBotMode] = session.last_bot_mode || "none";
   if (idxQuestionStreak !== -1) outRow[idxQuestionStreak] = String(session.question_streak || 0);
   if (idxTurnsSinceQuestion !== -1)
@@ -711,7 +611,6 @@ async function resetSession(user_id, lang = "en") {
     msg_count: 0,
     seed_prompt: "",
     last_agent_prompt: "",
-    last_question_type: "none",
     last_bot_mode: "none",
     question_streak: 0,
     turns_since_question: 99,
@@ -744,17 +643,6 @@ async function buildListenerReply({
   });
 }
 
-function toMessageResult(messages) {
-  const cleanMessages = (messages || [])
-    .map((x) => String(x || "").trim())
-    .filter(Boolean);
-
-  return {
-    text: cleanMessages[0] || "",
-    messages: cleanMessages,
-  };
-}
-
 async function processTurn({ user_id, text, forcedLang }) {
   const msg = normalizeText(text);
   let session = await loadSession(user_id);
@@ -766,11 +654,10 @@ async function processTurn({ user_id, text, forcedLang }) {
       story_text: "",
       story_id: "",
       consent: true,
-      lang: forcedLang || detectLangFromText(msg, "en"),
+      lang: forcedLang || "en",
       msg_count: 0,
       seed_prompt: "",
       last_agent_prompt: "",
-      last_question_type: "none",
       last_bot_mode: "none",
       question_streak: 0,
       turns_since_question: 99,
@@ -781,10 +668,31 @@ async function processTurn({ user_id, text, forcedLang }) {
     await upsertSession(session);
   }
 
-  let lang = forcedLang || session.lang || detectLangFromText(msg, "en");
-  lang = detectLangFromText(msg, lang);
+  let lang = forcedLang || session.lang || "en";
+  const explicitLang = explicitLanguageChoice(msg);
+  if (explicitLang) {
+    lang = explicitLang;
+  }
 
   const lower = msg.toLowerCase();
+
+  if (explicitLang) {
+    const open = openingText(explicitLang);
+
+    await upsertSession({
+      ...session,
+      state: "READY",
+      lang: explicitLang,
+      last_agent_prompt: open,
+      last_bot_mode: "ACKNOWLEDGMENT",
+      question_streak: 0,
+      turns_since_question: Number(session.turns_since_question ?? 99) + 1,
+      bot_turns_after_story: 0,
+      story_window_open: false,
+    });
+
+    return toMessageResult([open]);
+  }
 
   if (lower === "stop") {
     const reply = stoppedText(lang);
@@ -818,7 +726,6 @@ async function processTurn({ user_id, text, forcedLang }) {
       msg_count: 0,
       seed_prompt: "",
       last_agent_prompt: open,
-      last_question_type: "none",
       last_bot_mode: "ACKNOWLEDGMENT",
       question_streak: 0,
       turns_since_question: 99,
@@ -930,6 +837,7 @@ async function processTurn({ user_id, text, forcedLang }) {
     });
   }
 
+  // Hard cap: no more than 2 bot responses after story begins
   if (storyWindowOpen && botTurnsAfterStory >= 2) {
     return finalizeStory({
       session,
@@ -941,7 +849,7 @@ async function processTurn({ user_id, text, forcedLang }) {
 
   const updatedCount = Number(session.msg_count || 0) + 1;
 
-  const aiTurn = await buildListenerReply({
+  let aiTurn = await buildListenerReply({
     lang,
     seed_prompt: session.seed_prompt || "",
     fullConversation: withUserTurn,
@@ -952,17 +860,44 @@ async function processTurn({ user_id, text, forcedLang }) {
     turns_since_question: Number(session.turns_since_question ?? 99),
   });
 
-  const replyText = aiTurn?.text || "";
-  const nextMode = aiTurn?.mode || "ACKNOWLEDGMENT";
+  let replyText = aiTurn?.text || "";
+  let nextMode = aiTurn?.mode || "ACKNOWLEDGMENT";
+
+  // Enforce max 1 question total
+  if (
+    nextMode === "ASK" &&
+    Number(session.question_streak || 0) >= 1
+  ) {
+    replyText =
+      lang === "hi"
+        ? "आपकी बात सुनकर अच्छा लगा।"
+        : lang === "gu"
+        ? "તમારી વાત સાંભળીને સારું લાગ્યું."
+        : "It was good to hear this.";
+    nextMode = "ACKNOWLEDGMENT";
+  }
+
+  // Enforce 2nd bot response to be reflection only
+  if (storyWindowOpen && botTurnsAfterStory >= 1) {
+    if (/\?/.test(replyText)) {
+      replyText =
+        lang === "hi"
+          ? "यह याद बहुत सजीव लगती है।"
+          : lang === "gu"
+          ? "આ યાદ ખૂબ જીવંત લાગે છે."
+          : "This memory feels very vivid.";
+      nextMode = "ACKNOWLEDGMENT";
+    }
+  }
+
   const withBotTurn = appendTurn(withUserTurn, "Bot", replyText);
 
   const nextQuestionStreak =
-    nextMode === "ASK" ? Number(session.question_streak || 0) + 1 : 0;
+    nextMode === "ASK" ? Number(session.question_streak || 0) + 1 : Number(session.question_streak || 0);
   const nextTurnsSinceQuestion =
     nextMode === "ASK" ? 0 : Number(session.turns_since_question ?? 99) + 1;
 
   const nextBotTurnsAfterStory = storyWindowOpen ? botTurnsAfterStory + 1 : 0;
-  const nextStoryWindowOpen = nextMode === "GENTLE_CLOSURE" ? false : storyWindowOpen;
 
   await upsertSession({
     ...session,
@@ -975,7 +910,7 @@ async function processTurn({ user_id, text, forcedLang }) {
     question_streak: nextQuestionStreak,
     turns_since_question: nextTurnsSinceQuestion,
     bot_turns_after_story: nextBotTurnsAfterStory,
-    story_window_open: nextStoryWindowOpen,
+    story_window_open: storyWindowOpen,
   });
 
   return toMessageResult([replyText]);
